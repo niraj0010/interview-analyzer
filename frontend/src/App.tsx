@@ -1,16 +1,28 @@
-// src/App.tsx
-import React from "react";
-import { Button, Typography, Container } from "@mui/material";
 
-export default function App() {
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import LandingPage from "./pages/LandingPage";
+
+
+function App() {
   return (
-    <Container>
-      <Typography variant="h3" gutterBottom>
-        Welcome to Interview Analyzer
-      </Typography>
-      <Button variant="contained" color="primary">
-        Get Started
-      </Button>
-    </Container>
+    <Router>
+      <Routes>
+        {/* Default → Login */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
+
+        {/* Auth Routes */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/landing" element={<LandingPage />} />
+
+
+        {/* Protected Route (for later you can add auth check) */}
+        
+      </Routes>
+    </Router>
   );
 }
+
+export default App;
