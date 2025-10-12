@@ -1,9 +1,8 @@
-
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import LandingPage from "./pages/LandingPage";
-
+import UserProfile from "./pages/UserProfile"; // ✅ make sure the path matches your folder
 
 function App() {
   return (
@@ -17,9 +16,8 @@ function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/landing" element={<LandingPage />} />
 
-
-        {/* Protected Route (for later you can add auth check) */}
-        
+        {/* ✅ User Profile Route */}
+        <Route path="/profile" element={<UserProfile />} />
       </Routes>
     </Router>
   );
