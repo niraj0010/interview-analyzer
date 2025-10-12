@@ -1,3 +1,4 @@
+import React from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -5,19 +6,20 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
-import React from "react";
+
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import LandingPage from "./pages/LandingPage";
 import { FileUpload } from "./components/FileUpload";
 import { NavigationBar } from "./components/NavigationBar";
 import AnalysisPage from "./pages/AnalysisPage";
-import { UploadProgress } from "./pages/UploadProgress"; // ✅ NEW IMPORT
+import UserProfile from "./pages/UserProfile";
+import { UploadProgress } from "./pages/UploadProgress";
 
 const App: React.FC = () => {
   const location = useLocation();
 
-  // ✅ Hide navbar on login/signup pages only
+  // ✅ Hide navbar on login/signup pages
   const hideNavbar =
     location.pathname === "/login" || location.pathname === "/signup";
 
@@ -38,8 +40,9 @@ const App: React.FC = () => {
           {/* ✅ App routes */}
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/upload" element={<FileUpload />} />
-          <Route path="/upload-progress" element={<UploadProgress />} /> {/* ✅ NEW ROUTE */}
+          <Route path="/upload-progress" element={<UploadProgress />} />
           <Route path="/analysis" element={<AnalysisPage />} />
+          <Route path="/profile" element={<UserProfile />} />
         </Routes>
       </main>
     </div>

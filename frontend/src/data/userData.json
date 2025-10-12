@@ -1,0 +1,120 @@
+{
+  "id": 1,
+  "name": "Skrit Simkhada",
+  "email": "skrit.simkhada@selu.edu",
+  "role": "Student",
+  "avatarUrl": "https://cdn.britannica.com/26/162626-050-3534626F/Koala.jpg",
+  "bio": "Information Technology student interested in AI, software engineering, and data analytics.",
+  "pastInterviews": [
+    {
+      "id": 101,
+      "title": "Technical Interview Practice - Google",
+      "company": "Google",
+      "position": "Software Engineer Intern",
+      "date": "2025-09-15",
+      "duration": "45:32",
+      "type": "Interview Practice",
+      "fileSize": "1.2 GB",
+      "score": 8.7,
+      "performance": {
+        "Communication": 8.5,
+        "Problem Solving": 8.9,
+        "Confidence": 8.3,
+        "Clarity": 9.1
+      },
+      "insights": [
+        "Clear explanation of complex concepts",
+        "Good use of examples and analogies"
+      ],
+      "emotionAnalysis": "Confident and engaged throughout"
+    },
+    {
+      "id": 102,
+      "title": "Product Management Mock Interview - Microsoft",
+      "company": "Microsoft",
+      "position": "Product Manager",
+      "date": "2025-09-05",
+      "duration": "38:45",
+      "type": "Interview Practice",
+      "fileSize": "89 MB",
+      "score": 9.2,
+      "performance": {
+        "Storytelling": 9.5,
+        "Leadership": 9.0,
+        "Communication": 9.3,
+        "Authenticity": 9.1
+      },
+      "insights": [
+        "Excellent STAR method implementation",
+        "Compelling leadership examples"
+      ],
+      "emotionAnalysis": "Positive and authentic presentation"
+    },
+    {
+      "id": 103,
+      "title": "System Design Practice - Amazon",
+      "company": "Amazon",
+      "position": "Software Development Engineer Intern",
+      "date": "2025-08-28",
+      "duration": "52:10",
+      "type": "Mock Interview",
+      "fileSize": "2.0 GB",
+      "score": 8.3,
+      "performance": {
+        "System Design": 8.6,
+        "Scalability": 8.2,
+        "Communication": 8.0,
+        "Confidence": 8.4
+      },
+      "insights": [
+        "Good understanding of load balancing",
+        "Could elaborate more on data partitioning"
+      ],
+      "emotionAnalysis": "Focused and analytical tone"
+    },
+    {
+      "id": 104,
+      "title": "Behavioral Interview Practice - Meta",
+      "company": "Meta",
+      "position": "Software Engineer Intern",
+      "date": "2025-08-12",
+      "duration": "40:12",
+      "type": "Interview Practice",
+      "fileSize": "750 MB",
+      "score": 9.0,
+      "performance": {
+        "Authenticity": 9.2,
+        "Confidence": 8.8,
+        "Clarity": 9.0,
+        "Empathy": 9.1
+      },
+      "insights": [
+        "Strong personal storytelling",
+        "Excellent use of reflection and growth examples"
+      ],
+      "emotionAnalysis": "Friendly and sincere demeanor"
+    },
+    {
+      "id": 105,
+      "title": "Coding Interview - Tesla",
+      "company": "Tesla",
+      "position": "Software Engineer Intern",
+      "date": "2025-07-30",
+      "duration": "55:20",
+      "type": "Technical Interview",
+      "fileSize": "1.5 GB",
+      "score": 8.9,
+      "performance": {
+        "Problem Solving": 9.0,
+        "Efficiency": 8.7,
+        "Clarity": 8.8,
+        "Confidence": 9.1
+      },
+      "insights": [
+        "Optimized algorithmic thinking",
+        "Good debugging strategy under time pressure"
+      ],
+      "emotionAnalysis": "Composed and focused performance"
+    }
+  ]
+}
