@@ -23,6 +23,10 @@ venv\Scripts\activate      # Windows
 # or
 source venv/bin/activate   # macOS/Linux
 
+Install requirements:
+
+pip install -r requirements.txt
+
 
 Run the server :
 
