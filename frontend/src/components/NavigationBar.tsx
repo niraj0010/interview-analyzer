@@ -5,7 +5,6 @@ import {
   Typography,
   Box,
   Button,
-  
 } from "@mui/material";
 import {
   Brain,
@@ -15,16 +14,11 @@ import {
   User,
   LogOut,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-interface Props {
-  onProfileClick?: () => void;
-  onLogout?: () => void;
-}
+export const NavigationBar: React.FC = () => {
+  const navigate = useNavigate();
 
-export const NavigationBar: React.FC<Props> = ({
-  onProfileClick,
-  onLogout,
-}) => {
   return (
     <AppBar
       position="sticky"
@@ -49,7 +43,10 @@ export const NavigationBar: React.FC<Props> = ({
         {/* ---- Left: Logo ---- */}
         <Box display="flex" alignItems="center" gap={1}>
           <Brain size={28} color="#14b8a6" />
-          <Box>
+          <Box
+            sx={{ cursor: "pointer" }}
+            onClick={() => navigate("/landing")}
+          >
             <Typography
               variant="h6"
               fontWeight={700}
@@ -81,9 +78,9 @@ export const NavigationBar: React.FC<Props> = ({
             justifyContent: "center",
           }}
         >
-          {/* Home Button with glow */}
           <Button
             startIcon={<Home size={18} />}
+            onClick={() => navigate("/landing")}
             sx={{
               background: "#14b8a6",
               color: "#fff",
@@ -101,9 +98,9 @@ export const NavigationBar: React.FC<Props> = ({
             Home
           </Button>
 
-          {/* Other Links */}
           <Button
             startIcon={<Mic size={18} />}
+            onClick={() => navigate("/practice")}
             sx={{
               color: "#e2e8f0",
               fontWeight: 500,
@@ -116,6 +113,7 @@ export const NavigationBar: React.FC<Props> = ({
 
           <Button
             startIcon={<LayoutDashboard size={18} />}
+            onClick={() => navigate("/analysis")}
             sx={{
               color: "#e2e8f0",
               fontWeight: 500,
@@ -131,7 +129,7 @@ export const NavigationBar: React.FC<Props> = ({
         <Box display="flex" alignItems="center" gap={2}>
           <Button
             startIcon={<User size={18} />}
-            onClick={onProfileClick}
+            onClick={() => navigate("/profile")}
             sx={{
               color: "#e2e8f0",
               textTransform: "none",
@@ -142,7 +140,10 @@ export const NavigationBar: React.FC<Props> = ({
           </Button>
           <Button
             startIcon={<LogOut size={18} />}
-            onClick={onLogout}
+            onClick={() => {
+              // Add Firebase logout here later
+              navigate("/login");
+            }}
             sx={{
               color: "#fff",
               background: "rgba(30,41,59,0.8)",

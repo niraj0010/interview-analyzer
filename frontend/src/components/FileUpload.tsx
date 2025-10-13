@@ -12,11 +12,15 @@ export const FileUpload: React.FC = () => {
     if (event.target.files && event.target.files.length > 0) {
       setSelectedFile(event.target.files[0]);
 
-      // ✅ Navigate to the Upload Progress page right after selecting a file
+      //  Navigate to the Upload Progress page right after selecting a file
       setTimeout(() => {
         navigate("/upload-progress");
       }, 500);
     }
+  };
+
+  const handlePastInterviewsClick = () => {
+    navigate("/profile"); //  Go to user profile
   };
 
   return (
@@ -172,6 +176,7 @@ export const FileUpload: React.FC = () => {
       >
         <Button
           variant="outlined"
+          onClick={handlePastInterviewsClick} // ✅ navigate to /profile
           sx={{
             borderColor: "#14b8a6",
             color: "#14b8a6",
