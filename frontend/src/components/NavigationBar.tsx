@@ -98,6 +98,7 @@ export const NavigationBar: React.FC = () => {
             Home
           </Button>
 
+          {/* ✅ Practice Button → goes to /practice page */}
           <Button
             startIcon={<Mic size={18} />}
             onClick={() => navigate("/practice")}
