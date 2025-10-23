@@ -20,3 +20,5 @@ venv/
 Thumbs.db
 
 firebase-service-account.json
+
+uploads

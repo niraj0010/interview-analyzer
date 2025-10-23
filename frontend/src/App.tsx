@@ -1,4 +1,3 @@
-import FeedbackPage from "./pages/FeedbackPage";
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -15,36 +14,44 @@ import { FileUpload } from "./components/FileUpload";
 import { NavigationBar } from "./components/NavigationBar";
 import AnalysisPage from "./pages/AnalysisPage";
 import UserProfile from "./pages/UserProfile";
-import ProcessingPage from "./pages/ProcessingPage"; 
+import { UploadProgress } from "./pages/UploadProgress";
+import PracticePage from "./pages/PracticePage"; 
+import PracticeSession from "./pages/PracticeSession";
+
 
 const App: React.FC = () => {
   const location = useLocation();
 
-  // ✅ Hide navbar on login/signup pages
+  
   const hideNavbar =
     location.pathname === "/login" || location.pathname === "/signup";
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ✅ Show navbar unless on login/signup */}
+      {/*  Show navbar unless on login/signup */}
       {!hideNavbar && <NavigationBar />}
 
       <main className="pt-16">
         <Routes>
-          {/* ✅ Redirect root to login */}
+          {/* Redirect root to login */}
           <Route path="/" element={<Navigate to="/login" replace />} />
 
-          {/* ✅ Auth routes */}
+          {/*  Auth routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
 
-          {/* ✅ App routes */}
-         <Route path="/landing" element={<LandingPage />} />
+          {/* App routes */}
+          <Route path="/landing" element={<LandingPage />} />
           <Route path="/upload" element={<FileUpload />} />
-          <Route path="/processing" element={<ProcessingPage />} /> {/* ✅ */}
-          <Route path="/feedback" element={<FeedbackPage />} /> {/* ✅ */}
+          <Route path="/upload-progress" element={<UploadProgress />} />
           <Route path="/analysis" element={<AnalysisPage />} />
           <Route path="/profile" element={<UserProfile />} />
+
+          {/* New Practice route */}
+          <Route path="/practice" element={<PracticePage />} />
+          <Route path="/practice-session" element={<PracticeSession />} />
+
+          
         </Routes>
       </main>
     </div>

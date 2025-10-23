@@ -25,7 +25,7 @@ const Login: React.FC = () => {
   const handleLogin = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigate("/landing");
+      navigate("/upload");
     } catch (err: any) {
       setError(err.message);
     }

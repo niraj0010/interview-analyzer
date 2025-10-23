@@ -80,7 +80,7 @@ export const NavigationBar: React.FC = () => {
         >
           <Button
             startIcon={<Home size={18} />}
-            onClick={() => navigate("/landing")}
+            onClick={() => navigate("/upload")}
             sx={{
               background: "#14b8a6",
               color: "#fff",
@@ -98,6 +98,7 @@ export const NavigationBar: React.FC = () => {
             Home
           </Button>
 
+          {/* ✅ Practice Button → goes to /practice page */}
           <Button
             startIcon={<Mic size={18} />}
             onClick={() => navigate("/practice")}
@@ -113,7 +114,7 @@ export const NavigationBar: React.FC = () => {
 
           <Button
             startIcon={<LayoutDashboard size={18} />}
-            onClick={() => navigate("/analysis")}
+            onClick={() => navigate("/profile")}
             sx={{
               color: "#e2e8f0",
               fontWeight: 500,
