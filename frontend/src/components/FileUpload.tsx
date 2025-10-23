@@ -8,19 +8,41 @@ export const FileUpload: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const navigate = useNavigate();
 
+  // ✅ Upload to FastAPI backend
+  const handleFileUpload = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+
+      console.log("✅ Upload success:", data);
+
+      // navigate to analysis page with backend response
+      navigate("/analysis", { state: { result: data } });
+    } catch (error) {
+      console.error("❌ Upload error:", error);
+      alert("Upload failed. Please try again.");
+    }
+  };
+
+  // ✅ Handle file input
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
-      setSelectedFile(event.target.files[0]);
-
-      //  Navigate to the Upload Progress page right after selecting a file
-      setTimeout(() => {
-        navigate("/upload-progress");
-      }, 500);
+      const file = event.target.files[0];
+      setSelectedFile(file);
+      handleFileUpload(file); // upload immediately
     }
   };
 
   const handlePastInterviewsClick = () => {
-    navigate("/profile"); //  Go to user profile
+    navigate("/profile"); // ✅ Go to user profile
   };
 
   return (
@@ -111,11 +133,11 @@ export const FileUpload: React.FC = () => {
         />
 
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-          Upload your video
+          Upload your video or audio
         </Typography>
 
         <Typography variant="body2" sx={{ color: "#94a3b8", mb: 3 }}>
-          Click below or drag and drop your video file here
+          Click below or drag and drop your file here
         </Typography>
 
         <Button
@@ -134,7 +156,7 @@ export const FileUpload: React.FC = () => {
           <input
             hidden
             type="file"
-            accept="video/*"
+            accept="audio/*,video/*" // ✅ Restrict file types
             onChange={handleFileChange}
           />
         </Button>
@@ -163,7 +185,7 @@ export const FileUpload: React.FC = () => {
           fontSize: "0.85rem",
         }}
       >
-        Supported formats: .mp4, .mov, .avi, .webm
+        Supported formats: .mp3, .wav, .mp4, .mov, .avi, .webm
       </Typography>
 
       {/* ======= Centered Single Button ======= */}
@@ -176,7 +198,7 @@ export const FileUpload: React.FC = () => {
       >
         <Button
           variant="outlined"
-          onClick={handlePastInterviewsClick} // ✅ navigate to /profile
+          onClick={handlePastInterviewsClick}
           sx={{
             borderColor: "#14b8a6",
             color: "#14b8a6",
