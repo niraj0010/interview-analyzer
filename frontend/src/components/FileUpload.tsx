@@ -14,7 +14,7 @@ export const FileUpload: React.FC = () => {
 
       //  Navigate to the Upload Progress page right after selecting a file
       setTimeout(() => {
-        navigate("/upload-progress");
+       navigate("/processing");
       }, 500);
     }
   };

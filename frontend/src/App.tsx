@@ -1,3 +1,4 @@
+import FeedbackPage from "./pages/FeedbackPage";
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -14,7 +15,7 @@ import { FileUpload } from "./components/FileUpload";
 import { NavigationBar } from "./components/NavigationBar";
 import AnalysisPage from "./pages/AnalysisPage";
 import UserProfile from "./pages/UserProfile";
-import { UploadProgress } from "./pages/UploadProgress";
+import ProcessingPage from "./pages/ProcessingPage"; 
 
 const App: React.FC = () => {
   const location = useLocation();
@@ -38,9 +39,10 @@ const App: React.FC = () => {
           <Route path="/signup" element={<Signup />} />
 
           {/* ✅ App routes */}
-          <Route path="/landing" element={<LandingPage />} />
+         <Route path="/landing" element={<LandingPage />} />
           <Route path="/upload" element={<FileUpload />} />
-          <Route path="/upload-progress" element={<UploadProgress />} />
+          <Route path="/processing" element={<ProcessingPage />} /> {/* ✅ */}
+          <Route path="/feedback" element={<FeedbackPage />} /> {/* ✅ */}
           <Route path="/analysis" element={<AnalysisPage />} />
           <Route path="/profile" element={<UserProfile />} />
         </Routes>

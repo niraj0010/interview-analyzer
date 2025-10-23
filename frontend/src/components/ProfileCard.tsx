@@ -22,7 +22,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
   name,
   email,
   role = "Candidate",
-  avatarUrl = "https://i.pravatar.cc/150?img=32",
+  avatarUrl = "https://i.pravatar.cc/c150?img=32",
   onEdit = () => console.log("Edit clicked"),
   onLogout = () => console.log("Logout clicked")
 }) => {
