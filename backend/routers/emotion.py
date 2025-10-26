@@ -8,14 +8,14 @@ router = APIRouter()
 
 # Load Hugging Face emotion model
 try:
-    print("🔄 Loading emotion detection model...")
+    print(" Loading emotion detection model...")
     emotion_model = pipeline(
         "audio-classification",
         model="r-f/wav2vec-english-speech-emotion-recognition"
     )
-    print("✅ Emotion model loaded successfully.")
+    print(" Emotion model loaded successfully.")
 except Exception as e:
-    print(f"❌ Failed to load emotion model: {e}")
+    print(f" Failed to load emotion model: {e}")
     raise e
 
 
@@ -34,16 +34,16 @@ async def analyze_emotion(file: UploadFile = File(...)):
         with open(temp_path, "wb") as f:
             f.write(await file.read())
 
-        # ✅ Convert to WAV (works for .mp4, .m4a, etc.)
+        #  Convert to WAV (works for .mp4, .m4a, etc.)
         ffmpeg.input(temp_path).output(
             wav_path, format="wav", ac=1, ar="16000"
         ).run(quiet=True, overwrite_output=True)
 
-        # ✅ Run emotion model
+        #  Run emotion model
         results = emotion_model(wav_path)
         top_result = results[0]
 
-        # ✅ Clean up
+        #  Clean up
         os.remove(temp_path)
         os.remove(wav_path)
 

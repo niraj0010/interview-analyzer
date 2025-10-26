@@ -32,9 +32,9 @@ if FIREBASE_CREDENTIALS and os.path.exists(FIREBASE_CREDENTIALS):
         cred = credentials.Certificate(FIREBASE_CREDENTIALS)
         firebase_admin.initialize_app(cred)
     db = firestore.client()
-    print("✅ Firestore initialized successfully.")
+    print("Firestore initialized successfully.")
 else:
-    print("ℹ️  Firestore disabled (FIREBASE_CREDENTIALS file missing or path incorrect).")
+    print("ℹ Firestore disabled (FIREBASE_CREDENTIALS file missing or path incorrect).")
 
 
 # ========= HELPERS =========
@@ -80,7 +80,7 @@ def detect_emotion(wav_path: str):
 def gemini_generate(prompt: str, model: str = None) -> str:
     """Use REST API for Gemini (AI Studio key format)."""
     if not GOOGLE_API_KEY:
-        print("⚠️  GOOGLE_API_KEY missing — Gemini skipped.")
+        print("  GOOGLE_API_KEY missing — Gemini skipped.")
         return None
 
     # Try different model names in order of preference (Updated for Gemini 2.0/2.5)
@@ -106,24 +106,24 @@ def gemini_generate(prompt: str, model: str = None) -> str:
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
         try:
-            print(f"📡 Trying Gemini model: {model_name}")
+            print(f" Trying Gemini model: {model_name}")
             resp = requests.post(url, headers=headers, json=payload, timeout=60)
             
             if resp.status_code == 200:
                 data = resp.json()
-                print(f"✅ Success with model: {model_name}")
+                print(f" Success with model: {model_name}")
                 return data["candidates"][0]["content"]["parts"][0]["text"]
             elif resp.status_code == 404:
-                print(f"⚠️  Model {model_name} not found, trying next...")
+                print(f"  Model {model_name} not found, trying next...")
                 last_error = f"Model {model_name} not found"
                 continue
             else:
-                print(f"❌ Gemini REST Error {resp.status_code}: {resp.text}")
+                print(f" Gemini REST Error {resp.status_code}: {resp.text}")
                 last_error = f"Error {resp.status_code}: {resp.text}"
                 continue
                 
         except requests.exceptions.RequestException as e:
-            print(f"❌ Request failed for {model_name}: {e}")
+            print(f" Request failed for {model_name}: {e}")
             last_error = str(e)
             continue
     
@@ -152,10 +152,10 @@ def list_available_models():
                     available.append(name)
             return available
         else:
-            print(f"❌ Failed to list models: {resp.text}")
+            print(f" Failed to list models: {resp.text}")
             return []
     except Exception as e:
-        print(f"❌ Error listing models: {e}")
+        print(f" Error listing models: {e}")
         return []
 
 
@@ -192,7 +192,7 @@ Guidelines:
 def gemini_feedback_json(transcript: str, emotion: str, conf: float, file_name: str, duration: str):
     """Generate structured JSON feedback via Gemini REST API."""
     if not GOOGLE_API_KEY:
-        print("⚠️ Gemini feedback skipped (no API key).")
+        print(" Gemini feedback skipped (no API key).")
         return None
 
     prompt = f"""
@@ -204,7 +204,7 @@ def gemini_feedback_json(transcript: str, emotion: str, conf: float, file_name: 
     \"\"\"{transcript[:8000]}\"\"\"  # Shortened for faster responses
     """
 
-    print("ℹ️ Calling Gemini via REST...")
+    print("ℹ Calling Gemini via REST...")
     text = gemini_generate(prompt)
     if not text:
         raise HTTPException(status_code=500, detail="Empty response from Gemini REST API.")
@@ -217,13 +217,13 @@ def gemini_feedback_json(transcript: str, emotion: str, conf: float, file_name: 
         try:
             return json.loads(match.group(0))
         except json.JSONDecodeError as e:
-            print(f"⚠️ JSON parse failed: {e}")
+            print(f" JSON parse failed: {e}")
             raise e
 
     try:
         data = _extract_and_parse_json(text)
     except Exception:
-        print("⚠️ Gemini JSON invalid. Retrying to enforce JSON format...")
+        print(" Gemini JSON invalid. Retrying to enforce JSON format...")
         reformat_prompt = f"Reformat the following into valid JSON ONLY (no explanation):\n\n{text}"
         fixed_text = gemini_generate(reformat_prompt)
         data = _extract_and_parse_json(fixed_text)
@@ -280,17 +280,17 @@ async def analyze_interview(
         to_wav(raw_path, wav_path)
         duration = probe_duration(raw_path) or probe_duration(wav_path)
 
-        # 1️⃣ Transcription
+        # 1️ Transcription
         t0 = time.time()
         transcript = whisper_transcribe(wav_path)
         print(f"Whisper: {time.time()-t0:.2f}s")
 
-        # 2️⃣ Emotion
+        # 2️ Emotion
         t0 = time.time()
         dominant_emotion, confidence, all_emotions = detect_emotion(wav_path)
         print(f"Emotion: {time.time()-t0:.2f}s")
 
-        # 3️⃣ Gemini feedback via REST
+        # 3️ Gemini feedback via REST
         t0 = time.time()
         feedback = gemini_feedback_json(transcript, dominant_emotion, confidence, file.filename, duration)
         print(f"Gemini: {time.time()-t0:.2f}s")
@@ -324,5 +324,5 @@ async def analyze_interview(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ UNHANDLED EXCEPTION in /analyze: {e}")
+        print(f" UNHANDLED EXCEPTION in /analyze: {e}")
         raise HTTPException(status_code=500, detail=str(e))
