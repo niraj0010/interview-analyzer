@@ -3,34 +3,42 @@ import { Brain } from "lucide-react";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { Button, Typography, Paper, Box } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { getAuth } from "firebase/auth";
+
 
 export const FileUpload: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const navigate = useNavigate();
 
-  // ✅ Upload to FastAPI backend
-  const handleFileUpload = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
+const handleFileUpload = async (file: File) => {
+  const auth = getAuth();
+  const user = auth.currentUser;
 
-    try {
-      const response = await fetch("http://127.0.0.1:8000/upload", {
-        method: "POST",
-        body: formData,
-      });
+  if (!user) {
+    alert("Please sign in first.");
+    return;
+  }
 
-      if (!response.ok) throw new Error("Upload failed");
-      const data = await response.json();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("user_id", user.uid); // ✅ real Firebase UID
 
-      console.log("✅ Upload success:", data);
+  try {
+    const response = await fetch("http://127.0.0.1:8000/analyze", {
+      method: "POST",
+      body: formData,
+    });
 
-      // navigate to analysis page with backend response
-      navigate("/analysis", { state: { result: data } });
-    } catch (error) {
-      console.error("❌ Upload error:", error);
-      alert("Upload failed. Please try again.");
-    }
-  };
+    if (!response.ok) throw new Error("Upload failed");
+    const data = await response.json();
+
+    console.log("✅ Upload success:", data);
+    navigate("/analysis", { state: { result: data } });
+  } catch (error) {
+    console.error("❌ Upload error:", error);
+    alert("Upload failed. Please try again.");
+  }
+};
 
   // ✅ Handle file input
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
