@@ -8,7 +8,7 @@ const UserProfile: React.FC = () => {
 
   return (
     <Box
-      display="flex"
+      display="flex"  
       justifyContent="center"
       alignItems="center"
       minHeight="100vh"
