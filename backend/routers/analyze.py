@@ -7,7 +7,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 load_dotenv()
-router = APIRouter()
+router = APIRouter()    
 
 # ========= CONFIG =========
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
