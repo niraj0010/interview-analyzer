@@ -1,7 +1,5 @@
 import React, { useState } from "react";
 import {
-  AppBar,
-  Toolbar,
   Typography,
   Button,
   Box,
@@ -16,9 +14,6 @@ import {
   CssBaseline,
 } from "@mui/material";
 import { createTheme } from "@mui/material/styles";
-import HomeIcon from "@mui/icons-material/Home";
-import PersonIcon from "@mui/icons-material/Person";
-import LogoutIcon from "@mui/icons-material/Logout";
 import ShareIcon from "@mui/icons-material/Share";
 import DownloadIcon from "@mui/icons-material/Download";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -143,31 +138,7 @@ const FeedbackPage: React.FC = () => {
       <CssBaseline />
 
       {/* Top bar */}
-      <AppBar position="sticky" sx={{ background: "rgba(17,24,39,0.95)", backdropFilter: "blur(6px)" }}>
-        <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
-          <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-            <Typography variant="h6" color="primary">
-              Interview Analyzer
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              AI-POWERED INSIGHTS
-            </Typography>
-          </Box>
-
-          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-            <Button variant="contained" color="primary" startIcon={<HomeIcon />}>
-              Home
-            </Button>
-            <Button color="inherit" startIcon={<PersonIcon />}>
-              Profile
-            </Button>
-            <Button color="inherit" startIcon={<LogoutIcon />}>
-              Logout
-            </Button>
-          </Box>
-        </Toolbar>
-      </AppBar>
-
+     
       <Container maxWidth="xl" sx={{ mt: 4, mb: 8 }}>
         {/* Header card */}
         <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
