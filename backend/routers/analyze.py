@@ -26,15 +26,23 @@ EMOTION_MODEL = pipeline(
 )
 
 # Firestore (optional)
+# Firestore (diagnostic)
 db = None
-if FIREBASE_CREDENTIALS and os.path.exists(FIREBASE_CREDENTIALS):
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(FIREBASE_CREDENTIALS)
-        firebase_admin.initialize_app(cred)
-    db = firestore.client()
-    print("Firestore initialized successfully.")
+abs_path = os.path.abspath(FIREBASE_CREDENTIALS)
+print(f"🧩 Checking Firestore credentials at: {abs_path}")
+
+if FIREBASE_CREDENTIALS and os.path.exists(abs_path):
+    try:
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(abs_path)
+            firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        print("✅ Firestore initialized successfully.")
+    except Exception as e:
+        print(f"❌ Firestore init failed: {e}")
 else:
-    print("ℹ Firestore disabled (FIREBASE_CREDENTIALS file missing or path incorrect).")
+    print("⚠️ Firestore disabled — credentials file missing or incorrect path.")
+
 
 
 # ========= HELPERS =========

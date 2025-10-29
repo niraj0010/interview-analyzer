@@ -17,6 +17,7 @@ import UserProfile from "./pages/UserProfile";
 import { UploadProgress } from "./pages/UploadProgress";
 import PracticePage from "./pages/PracticePage"; 
 import PracticeSession from "./pages/PracticeSession";
+import Feedback from "./pages/FeedbackPage";
 
 
 const App: React.FC = () => {
@@ -50,8 +51,8 @@ const App: React.FC = () => {
           {/* New Practice route */}
           <Route path="/practice" element={<PracticePage />} />
           <Route path="/practice-session" element={<PracticeSession />} />
+           <Route path="/feedback" element={<Feedback />} />
 
-          
         </Routes>
       </main>
     </div>

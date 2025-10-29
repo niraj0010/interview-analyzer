@@ -1,5 +1,14 @@
 /* index.css — global base styles for your MUI theme app */
 
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background-color: #0f172a !important; /* deep navy */
+  color: #e2e8f0;
+}
+
 html, body {
   margin: 0;
   padding: 0;
