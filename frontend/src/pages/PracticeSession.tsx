@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -7,7 +7,7 @@ import {
   Card,
   CardContent,
 } from "@mui/material";
-import { Mic } from "lucide-react";
+import { Mic, StopCircle, Play } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const PracticeSession: React.FC = () => {
@@ -18,6 +18,12 @@ const PracticeSession: React.FC = () => {
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const totalQuestions = 8;
   const [isRecording, setIsRecording] = useState(false);
+  const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunks = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const progress = ((currentQuestion - 1) / totalQuestions) * 100;
 
@@ -32,7 +38,62 @@ const PracticeSession: React.FC = () => {
     "Why should we hire you for this role?",
   ];
 
+  // Format seconds → mm:ss
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const s = Math.floor(seconds % 60)
+      .toString()
+      .padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
+  const toggleRecording = async () => {
+    if (!isRecording) {
+      // Start recording
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunks.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          audioChunks.current.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks.current, { type: "audio/webm" });
+          const url = URL.createObjectURL(blob);
+          setRecordedUrl(url);
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        setRecordingTime(0);
+
+        // Start timer
+        timerRef.current = setInterval(() => {
+          setRecordingTime((prev) => prev + 1);
+        }, 1000);
+      } catch (error) {
+        console.error("Error accessing microphone:", error);
+      }
+    } else {
+      // Stop recording
+      mediaRecorderRef.current?.stop();
+      mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+      setIsRecording(false);
+
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+  };
+
   const handleNext = () => {
+    setRecordedUrl(null);
+    setRecordingTime(0);
     if (currentQuestion < totalQuestions) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
@@ -40,9 +101,11 @@ const PracticeSession: React.FC = () => {
     }
   };
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
-  };
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   return (
     <Box
@@ -120,7 +183,7 @@ const PracticeSession: React.FC = () => {
           {questions[currentQuestion - 1]}
         </Typography>
 
-        {/* Mic Button */}
+        {/* Recording Controls */}
         <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
           <Box
             onClick={toggleRecording}
@@ -139,11 +202,23 @@ const PracticeSession: React.FC = () => {
               transition: "all 0.3s ease",
             }}
           >
-            <Mic size={40} color="#fff" />
+            {isRecording ? <StopCircle size={40} color="#fff" /> : <Mic size={40} color="#fff" />}
           </Box>
-          <Typography fontWeight={600}>
-            {isRecording ? "Recording..." : "Start Recording"}
+
+          {/* Timestamp */}
+          <Typography fontWeight={600} color={isRecording ? "#f87171" : "#14b8a6"}>
+            {isRecording ? `Recording... ${formatTime(recordingTime)}` : "Start Recording"}
           </Typography>
+
+          {/* Replay */}
+          {recordedUrl && !isRecording && (
+            <Box mt={2}>
+              <audio controls src={recordedUrl}></audio>
+              <Typography variant="body2" color="#94a3b8" mt={1}>
+                Duration: {formatTime(recordingTime)}
+              </Typography>
+            </Box>
+          )}
         </Box>
 
         {/* Next Button */}
