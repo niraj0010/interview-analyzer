@@ -1,0 +1,19 @@
+{
+  "title": "Software Developer",
+  "focus_areas": [
+    "Object-Oriented Programming (OOP)",
+    "Data Structures and Algorithms",
+    "Version Control (Git/GitHub)",
+    "Debugging and Testing",
+    "APIs and Backend Development",
+    "Databases (SQL and NoSQL)",
+    "Frontend Frameworks (React, Angular, or Vue)"
+  ],
+  "sample_prompts": [
+    "Explain the difference between a stack and a queue, and where each would be used.",
+    "How would you optimize a slow-running SQL query?",
+    "Describe a time you debugged a complex software issue.",
+    "How would you design a RESTful API for a task management system?",
+    "Explain the concept of asynchronous programming and its benefits."
+  ]
+}
