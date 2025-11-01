@@ -20,7 +20,7 @@ app.include_router(transcribe.router)
 app.include_router(emotion.router)
 app.include_router(analyze.router)
 app.include_router(ai_practice.router)  
-
+                                                                                                            
 @app.get("/")
 def root():
     return {"message": "Backend running successfully!"}

@@ -1,11 +1,10 @@
 # backend/routers/ai_practice.py
-
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
 from datetime import datetime
 import os
 import json
 import uuid
-import tempfile
 import google.generativeai as genai
 
 from firebase_admin import firestore
@@ -26,19 +25,22 @@ if GOOGLE_API_KEY:
 PRIMARY_MODEL = "gemini-2.5-flash"
 FALLBACK_MODEL = "gemini-1.5-flash"
 
-# Where we persist raw answers on disk
+# Where raw audio is stored
 BASE_DIR = os.path.abspath(os.path.join(os.getcwd(), "uploads", "practice"))
 os.makedirs(BASE_DIR, exist_ok=True)
 
+
+# ---------------------- Helper Functions ----------------------
 def _get_model():
     try:
         return genai.GenerativeModel(PRIMARY_MODEL)
-    except:
+    except Exception:
         try:
             return genai.GenerativeModel(FALLBACK_MODEL)
         except Exception as e:
             print("Gemini unavailable:", e)
             return None
+
 
 def _json_array(text: str):
     text = text.strip()
@@ -47,8 +49,11 @@ def _json_array(text: str):
         text = text.split("\n", 1)[-1].strip()
     return json.loads(text)
 
+
+# ---------------------- Routes ----------------------
 @router.get("/practice/start")
 def start_practice(role: str, uid: str):
+    """Create a new practice session and generate 8 questions."""
     session_id = str(uuid.uuid4())
     prompt = f"""
     Generate exactly 8 realistic interview questions for a {role}.
@@ -72,7 +77,7 @@ def start_practice(role: str, uid: str):
             res = model.generate_content(prompt)
             questions = _json_array(res.text)
             questions = questions[:8]
-        except:
+        except Exception:
             questions = [
                 f"Tell me about yourself and your background in {role}.",
                 "Describe a challenging problem you solved.",
@@ -84,20 +89,23 @@ def start_practice(role: str, uid: str):
                 f"Why should we hire you for {role}?",
             ]
 
-    # Pre-create a storage folder for the session
+    # Create local folder
     sess_dir = os.path.join(BASE_DIR, uid, session_id)
     os.makedirs(sess_dir, exist_ok=True)
 
+    # Create Firestore session document
     db.collection("users").document(uid).collection("practiceSessions").document(session_id).set({
         "role": role,
         "questions": questions,
         "createdAt": datetime.utcnow(),
         "complete": False,
-        "answers": []  # will collect per-question metadata
+        "answers": []
     })
 
-    return {"sessionId": session_id, "questions": questions}
+    return JSONResponse(content={"sessionId": session_id, "questions": questions})
 
+
+# --------------------------------------------------------------------
 @router.post("/practice/answer")
 async def practice_answer(
     sessionId: str = Form(...),
@@ -107,6 +115,7 @@ async def practice_answer(
     skipped: bool = Form(...),
     file: UploadFile = File(None),
 ):
+    """Store each individual answer's metadata (not analyze yet)."""
     if not uid or not sessionId:
         raise HTTPException(400, "Missing uid/sessionId")
 
@@ -117,7 +126,7 @@ async def practice_answer(
     if not session_ref.get().exists:
         raise HTTPException(404, "Session not found")
 
-    # Fast path for skip (no audio required)
+    # Skip case
     if skipped and skipped in ("true", "True", True):
         session_ref.update({
             "answers": firestore.ArrayUnion([{
@@ -127,38 +136,39 @@ async def practice_answer(
                 "timestamp": datetime.utcnow()
             }])
         })
-        return {"ok": True, "skipped": True}
+        return JSONResponse(content={"ok": True, "skipped": True})
 
-    # If not skipped, we just persist raw audio to disk and store its path (no heavy analysis here).
+    # Upload path for audio
     if not file:
-        raise HTTPException(400, "Missing audio")
+        raise HTTPException(400, "Missing audio file")
 
     sess_dir = os.path.join(BASE_DIR, uid, sessionId)
     os.makedirs(sess_dir, exist_ok=True)
 
-    # q{index+1}.webm in a stable location
-    filename = f"q{int(questionIndex)+1}.webm"
+    filename = f"q{int(questionIndex) + 1}.webm"
     raw_path = os.path.join(sess_dir, filename)
 
     with open(raw_path, "wb") as f:
         f.write(await file.read())
 
-    # Light metadata only
     session_ref.update({
         "answers": firestore.ArrayUnion([{
             "questionIndex": questionIndex,
             "question": question,
             "skipped": False,
-            "filePath": raw_path,        # local path to raw recording
+            "filePath": raw_path,
             "originalName": file.filename,
             "timestamp": datetime.utcnow()
         }])
     })
 
-    return {"ok": True, "skipped": False}
+    return JSONResponse(content={"ok": True, "skipped": False})
 
+
+# --------------------------------------------------------------------
 @router.post("/practice/finish")
 def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
+    """At the end, analyze all answers and return summarized feedback."""
     if not uid or not sessionId:
         raise HTTPException(400, "Missing uid/sessionId")
 
@@ -174,24 +184,30 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
     questions = data.get("questions", [])
     answers = data.get("answers", [])
 
-    # Build combined transcript (with explicit [SKIPPED] markers) and collect light per-question results
     combined_lines = []
-    per_q = []  # optional: keep per-question transcript/emotion to store in summary
+    per_q = []
 
-    # Sort by questionIndex to ensure consistent order
+    # Process answers sequentially
     for a in sorted(answers, key=lambda x: x["questionIndex"]):
         q_idx = int(a["questionIndex"])
-        q_text = a.get("question") or (questions[q_idx] if q_idx < len(questions) else f"Question {q_idx+1}")
+        q_text = a.get("question") or (
+            questions[q_idx] if q_idx < len(questions) else f"Question {q_idx + 1}"
+        )
+
         if a.get("skipped"):
-            combined_lines.append(f"Q{q_idx+1}: {q_text}\n[SKIPPED]")
+            combined_lines.append(f"Q{q_idx + 1}: {q_text}\n[SKIPPED]")
             per_q.append({"questionIndex": q_idx, "question": q_text, "skipped": True})
             continue
 
-        # For answered: run full pipeline now (convert -> transcribe -> emotion)
         raw_path = a.get("filePath")
         if not raw_path or not os.path.exists(raw_path):
-            combined_lines.append(f"Q{q_idx+1}: {q_text}\n[ERROR: audio missing]")
-            per_q.append({"questionIndex": q_idx, "question": q_text, "skipped": False, "error": "audio missing"})
+            combined_lines.append(f"Q{q_idx + 1}: {q_text}\n[ERROR: audio missing]")
+            per_q.append({
+                "questionIndex": q_idx,
+                "question": q_text,
+                "skipped": False,
+                "error": "audio missing"
+            })
             continue
 
         wav_path = raw_path + ".wav"
@@ -201,12 +217,9 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
             transcript = whisper_transcribe(wav_path)
 
             emo = analyze_emotion(wav_path)
-            if isinstance(emo, tuple):
-                label, score = emo
-            else:
-                label, score = str(emo), 0.8
+            label, score = emo if isinstance(emo, tuple) else (str(emo), 0.8)
 
-            combined_lines.append(f"Q{q_idx+1}: {q_text}\n{transcript}")
+            combined_lines.append(f"Q{q_idx + 1}: {q_text}\n{transcript}")
             per_q.append({
                 "questionIndex": q_idx,
                 "question": q_text,
@@ -216,25 +229,23 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
                 "duration": duration
             })
         finally:
-            # keep raw for debugging, remove temp wav
-            try:
-                if os.path.exists(wav_path):
+            if os.path.exists(wav_path):
+                try:
                     os.remove(wav_path)
-            except:
-                pass
+                except Exception:
+                    pass
 
     merged = "\n\n".join(combined_lines).strip()
     model = _get_model()
     summary_json = None
 
     if model:
-        # Make it explicit that some questions might be [SKIPPED]
         summary_prompt = f"""
 You are an AI interview coach. Analyze this full mock interview transcript.
 Some questions may be marked [SKIPPED] — ignore those when scoring.
 
 Transcript:
-\"\"\"{merged[:18000]}\"\"\"  # truncated for safety if extremely long
+\"\"\"{merged[:18000]}\"\"\"  # truncated for safety
 
 Return ONLY valid JSON with this schema:
 {{
@@ -248,7 +259,6 @@ Return ONLY valid JSON with this schema:
 
         try:
             out = model.generate_content(summary_prompt)
-            # Some SDK responses include backticks — strip safely
             raw_text = (out.text or "").strip()
             if raw_text.startswith("```"):
                 raw_text = raw_text.strip("`")
@@ -258,7 +268,7 @@ Return ONLY valid JSON with this schema:
             print("Summary generation failed:", e)
             summary_json = None
 
-    # Persist completion + summary + per-question light results for the UI
+    # Save summary + mark complete
     session_ref.update({
         "complete": True,
         "completedAt": datetime.utcnow(),
@@ -266,4 +276,9 @@ Return ONLY valid JSON with this schema:
         "perQuestion": per_q
     })
 
-    return {"status": "completed", "summary": summary_json}
+    # ✅ Always return valid JSON
+    return JSONResponse(content={
+        "status": "completed",
+        "summary": summary_json or {},
+        "perQuestion": per_q
+    })

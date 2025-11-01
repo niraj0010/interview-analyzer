@@ -9,14 +9,14 @@ import {
   Paper,
   Stack,
   Typography,
+  IconButton,
 } from "@mui/material";
 import MicIcon from "@mui/icons-material/Mic";
 import StopIcon from "@mui/icons-material/Stop";
-import SkipNextIcon from "@mui/icons-material/SkipNext";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getAuth } from "firebase/auth";
 
 type Phase =
   | "FETCHING_QUESTIONS"
@@ -28,11 +28,12 @@ type Phase =
 export default function PracticeSession() {
   const location = useLocation() as any;
   const navigate = useNavigate();
-  const auth = getAuth();
-  const uid = auth.currentUser?.uid;
 
   const role = location?.state?.role ?? "Software Developer";
   const MAX = 8;
+
+  // Replace Firebase uid logic with a simple unique placeholder for now
+  const [uid] = useState(() => crypto.randomUUID());
 
   const [sessionId, setSessionId] = useState("");
   const [questions, setQuestions] = useState<string[]>([]);
@@ -49,7 +50,7 @@ export default function PracticeSession() {
   const question = questions[index] ?? "";
   const progress = ((index + 1) / MAX) * 100;
 
-  // Fetch questions & sessionId
+  // Fetch questions & sessionId from backend
   useEffect(() => {
     (async () => {
       try {
@@ -60,8 +61,13 @@ export default function PracticeSession() {
         );
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
+
+        let qs = data?.questions ?? [];
+        qs = qs.slice(0, MAX);
+        while (qs.length < MAX) qs.push("Describe a recent challenge.");
+
         setSessionId(data.sessionId);
-        setQuestions(data.questions || []);
+        setQuestions(qs);
         setPhase("IDLE");
       } catch (e) {
         console.error(e);
@@ -71,7 +77,7 @@ export default function PracticeSession() {
     })();
   }, [role, uid, navigate]);
 
-  // Timer
+  // Timer helpers
   const startTimer = () => {
     stopTimer();
     setTimer(0);
@@ -87,9 +93,14 @@ export default function PracticeSession() {
     }
   };
 
-  // Recording
+  // Recording controls
   const startRecording = async () => {
     try {
+      setBlob(null);
+      const arr = [...recorded];
+      arr[index] = false;
+      setRecorded(arr);
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const r = new MediaRecorder(stream);
       chunksRef.current = [];
@@ -119,13 +130,18 @@ export default function PracticeSession() {
     setPhase("IDLE");
   };
 
-  // Submit current answer audio (FAST: just upload)
+  const handleNextQuestion = () => {
+    if (blob) submitAnswer();
+    else skip();
+  };
+
+  // Upload audio to backend
   const submitAnswer = async () => {
     setPhase("PROCESSING_ANSWER");
     try {
       const fd = new FormData();
       fd.append("sessionId", sessionId);
-      fd.append("uid", uid!);
+      fd.append("uid", uid);
       fd.append("questionIndex", String(index));
       fd.append("question", question);
       fd.append("skipped", "false");
@@ -140,7 +156,6 @@ export default function PracticeSession() {
       const arr = [...recorded];
       arr[index] = true;
       setRecorded(arr);
-
       next();
     } catch (e) {
       console.error(e);
@@ -149,13 +164,13 @@ export default function PracticeSession() {
     }
   };
 
-  // Skip
+  // Skip question
   const skip = async () => {
     setPhase("PROCESSING_ANSWER");
     try {
       const fd = new FormData();
       fd.append("sessionId", sessionId);
-      fd.append("uid", uid!);
+      fd.append("uid", uid);
       fd.append("questionIndex", String(index));
       fd.append("question", question);
       fd.append("skipped", "true");
@@ -166,6 +181,10 @@ export default function PracticeSession() {
       });
       if (!res.ok) throw new Error(await res.text());
 
+      const arr = [...recorded];
+      arr[index] = false;
+      setRecorded(arr);
+      setBlob(null);
       next();
     } catch (e) {
       console.error(e);
@@ -174,25 +193,22 @@ export default function PracticeSession() {
     }
   };
 
-  const next = () => {
-    stopTimer();
-    setBlob(null);
-    if (index + 1 >= MAX) {
-      // On last question, reveal Finish flow
-      setPhase("IDLE");
-    } else {
-      setIndex((i) => i + 1);
-      setPhase("IDLE");
-    }
-  };
+ const next = () => {
+  stopTimer();
+  setBlob(null);
+  setPhase("IDLE");  // ✅ Always reset to IDLE
+  if (index + 1 < MAX) {
+    setIndex((i) => i + 1);
+  }
+};
 
-  // Finish interview (single heavy analysis)
+  // Final summary — handled by backend Firestore update
   const finish = async () => {
     setPhase("FINALIZING");
     try {
       const fd = new FormData();
       fd.append("sessionId", sessionId);
-      fd.append("uid", uid!);
+      fd.append("uid", uid);
 
       const res = await fetch("http://127.0.0.1:8000/practice/finish", {
         method: "POST",
@@ -202,7 +218,7 @@ export default function PracticeSession() {
       const data = await res.json();
 
       navigate("/summary", {
-        state: { summary: data.summary, role },
+        state: { summary: data.summary, role, sessionId, uid },
       });
     } catch (e) {
       console.error(e);
@@ -211,99 +227,144 @@ export default function PracticeSession() {
     }
   };
 
-  const format = (s: number) =>
-    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(
-      s % 60
-    ).padStart(2, "0")}`;
-
   const isLast = index === MAX - 1;
+  const canInteract = phase === "IDLE" || phase === "RECORDING";
+  const disableActions = !canInteract || !question;
+  const isReady = phase !== "FETCHING_QUESTIONS";
 
   return (
     <Box sx={{ minHeight: "100vh", p: 4, bgcolor: "#0b1220", color: "#e2e8f0" }}>
-      {/* Header */}
-      <Paper sx={{ p: 2, mb: 2, bgcolor: "#192233" }}>
-        <Typography variant="h6">
-          Question {Math.min(index + 1, MAX)} of {MAX}
-        </Typography>
-        <Typography variant="body2">Role: {role}</Typography>
-        <LinearProgress value={progress} variant="determinate" sx={{ mt: 1 }} />
-      </Paper>
+      {isReady && (
+        <>
+          <Paper sx={{ p: 2, mb: 3, bgcolor: "#132030", borderRadius: "12px" }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="h6">
+                  Question {Math.min(index + 1, MAX)} of {MAX}
+                </Typography>
+                <Typography fontSize={13} opacity={0.6}>
+                  Role: {role}
+                </Typography>
+              </Box>
+              <Chip
+                label={`${Math.round(((index + 1) / MAX) * 100)}% Complete`}
+                size="small"
+                sx={{ bgcolor: "#0d9488", color: "white" }}
+              />
+            </Stack>
+            <LinearProgress variant="determinate" value={progress} sx={{ mt: 2, borderRadius: 5 }} />
+          </Paper>
 
-      {/* Question Card */}
-      <Paper sx={{ p: 4, bgcolor: "#1e293b", textAlign: "center" }}>
-        <Typography variant="h5" sx={{ mb: 3 }}>
-          {question || "Loading question..."}
-        </Typography>
-
-        <Stack direction="row" spacing={2} justifyContent="center" mb={2}>
-          <Chip label={`Timer: ${format(timer)}`} />
-          <Chip label={phase === "RECORDING" ? "Recording" : "Idle"} />
-          {recorded[index] && <Chip color="success" label="Saved" />}
-        </Stack>
-
-        {/* Controls */}
-        {phase !== "RECORDING" && (
-          <Button
-            startIcon={<MicIcon />}
-            variant="contained"
-            onClick={startRecording}
-            disabled={phase !== "IDLE" || !question}
+          <Paper
+            sx={{
+              p: 4,
+              bgcolor: "#1e293b",
+              borderRadius: "14px",
+              textAlign: "center",
+              minHeight: "50vh",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
           >
-            Start Recording
-          </Button>
-        )}
+            <Typography variant="h5" sx={{ mb: 4, fontWeight: 600, minHeight: "3em" }}>
+              {question}
+            </Typography>
 
-        {phase === "RECORDING" && (
-          <Button
-            startIcon={<StopIcon />}
-            variant="contained"
-            color="error"
-            onClick={stopRecording}
-          >
-            Stop Recording
-          </Button>
-        )}
+            <IconButton
+              onClick={phase === "RECORDING" ? stopRecording : startRecording}
+              disabled={disableActions}
+              sx={{
+                width: 120,
+                height: 120,
+                bgcolor: phase === "RECORDING" ? "#e63946" : "#14b8a6",
+                color: "white",
+                "&:hover": {
+                  bgcolor: phase === "RECORDING" ? "#c0303c" : "#11a090",
+                },
+                boxShadow: `0 0 20px ${
+                  phase === "RECORDING" ? "#e63946" : "#14b8a6"
+                }`,
+              }}
+            >
+              {phase === "RECORDING" ? (
+                <StopIcon sx={{ fontSize: 60 }} />
+              ) : (
+                <MicIcon sx={{ fontSize: 60 }} />
+              )}
+            </IconButton>
 
-        {/* After a recording exists, allow Next (upload) */}
-        {phase === "IDLE" && blob && (
-          <Button
-            endIcon={<NavigateNextIcon />}
-            variant="contained"
-            sx={{ mt: 2, ml: 2 }}
-            onClick={submitAnswer}
-          >
-            Save & Next
-          </Button>
-        )}
+            <Typography sx={{ mt: 2, mb: 3, fontSize: "1.1rem" }}>
+              {phase === "RECORDING"
+                ? `Recording... ${new Date(timer * 1000).toISOString().substr(14, 5)}`
+                : "Start Recording"}
+            </Typography>
 
-        {/* Skip always available when not recording */}
-        {phase !== "RECORDING" && (
-          <Button
-            startIcon={<SkipNextIcon />}
-            variant="outlined"
-            sx={{ mt: 2, ml: 2 }}
-            onClick={skip}
-            disabled={!question || phase !== "IDLE"}
-          >
-            Skip
-          </Button>
-        )}
+            {phase === "IDLE" && !isLast && (
+              <Button
+                endIcon={<NavigateNextIcon />}
+                variant="contained"
+                onClick={handleNextQuestion}
+                disabled={disableActions}
+                sx={{ bgcolor: "#0d9488", "&:hover": { bgcolor: "#0a7066" } }}
+              >
+                {blob ? "Save & Next" : "Next Question (Skip)"}
+              </Button>
+            )}
 
-        {/* Finish visible only on the last question (after recorded/skip or even empty) */}
-        {isLast && phase === "IDLE" && (
-          <Button
-            startIcon={<DoneAllIcon />}
-            variant="contained"
-            color="secondary"
-            sx={{ mt: 3, display: "block", mx: "auto" }}
-            onClick={finish}
-          >
-            Finish & Submit
-          </Button>
-        )}
-      </Paper>
+            {phase === "IDLE" && isLast && (
+              <Button
+                startIcon={<DoneAllIcon />}
+                variant="contained"
+                color="secondary"
+                onClick={finish}
+                disabled={disableActions}
+                sx={{ animation: "pulse 1.5s infinite" }}
+              >
+                Finish & Get Feedback
+              </Button>
+            )}
 
-      {/* Global backdrops for long actions */}
+            <Typography sx={{ mt: 3, opacity: 0.6, fontSize: "0.9rem" }}>
+              {phase === "IDLE" && recorded[index] ? "Answer Saved. " : ""}
+              Take your time and speak clearly. You can re-record if needed.
+            </Typography>
+          </Paper>
+
+          <Paper sx={{ p: 2, mt: 3, bgcolor: "#132030", borderRadius: "12px" }}>
+            <Stack direction="row" justifyContent="center" alignItems="center" spacing={2}>
+              {[...Array(MAX).keys()].map((i) => {
+                const isActive = i === index;
+                const isDone = recorded[i];
+                return (
+                  <Box
+                    key={i}
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: "50%",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      bgcolor: isActive ? "#14b8a6" : "#1e293b",
+                      border: isActive ? "2px solid #fff" : "2px solid transparent",
+                      color: isActive ? "white" : "#e2e8f0",
+                      fontWeight: isActive ? 700 : 400,
+                      transition: "all 0.3s ease",
+                      opacity: isDone || isActive ? 1 : 0.6,
+                    }}
+                  >
+                    {isDone ? <CheckCircleIcon sx={{ color: "#4ade80" }} /> : i + 1}
+                  </Box>
+                );
+              })}
+            </Stack>
+          </Paper>
+        </>
+      )}
+
+      {/* Loading Overlays */}
       <Backdrop open={phase === "FETCHING_QUESTIONS"} sx={{ color: "#fff", zIndex: 9999 }}>
         <Stack alignItems="center" spacing={2}>
           <CircularProgress />
