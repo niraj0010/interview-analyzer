@@ -21,11 +21,12 @@ import { createTheme } from "@mui/material/styles";
 import ShareIcon from "@mui/icons-material/Share";
 import DownloadIcon from "@mui/icons-material/Download";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { useLocation } from "react-router-dom";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { useLocation, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 
-// === THEME (unchanged) ===
+// === THEME ===
 export const theme = createTheme({
   palette: {
     mode: "dark",
@@ -65,15 +66,15 @@ export const theme = createTheme({
   },
 });
 
-
+// === UI Components ===
 const GradientButton: React.FC<{
   icon?: React.ReactNode;
   children: React.ReactNode;
-  onClick?: () => void; // ✅ add this prop type
-}> = ({ icon, children, onClick }) => ( // ✅ destructure onClick
+  onClick?: () => void;
+}> = ({ icon, children, onClick }) => (
   <Button
     startIcon={icon}
-    onClick={onClick} // ✅ reference correctly
+    onClick={onClick}
     sx={{
       background: "linear-gradient(90deg,#14b8a6,#10b981)",
       color: "#03121a",
@@ -150,31 +151,11 @@ const ScoreRing: React.FC<{ size?: number; value: number }> = ({ size = 110, val
   );
 };
 
-// Small bar for emotion list
-const EmotionBar: React.FC<{ label: string; score: number }> = ({ label, score }) => {
-  const pct = Math.round((score ?? 0) * 100);
-  return (
-    <Box sx={{ mb: 1.2 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-        <Typography variant="body2" color="text.secondary">
-          {label}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {pct}%
-        </Typography>
-      </Box>
-      <GradientProgress value={pct} />
-    </Box>
-  );
-};
-
-
-
 // === Types ===
 interface TranscriptEntry {
-  speaker: string;        // e.g. "Candidate" or "Interviewer"
-  time: string;           // e.g. "0:05"
-  text: string;           // transcript sentence
+  speaker: string;
+  time: string;
+  text: string;
   sentiment: "positive" | "neutral" | "negative";
 }
 
@@ -193,13 +174,24 @@ interface BreakdownItem {
 
 interface EmotionItem {
   label: string;
-  score: number; // 0–1 range
+  score: number;
+}
+
+interface PracticeQuestionAnswer {
+  questionIndex: number;
+  question: string;
+  skipped: boolean;
+  transcript?: string;
+  emotion?: {
+    label: string;
+    confidence: number;
+  };
+  duration?: string;
+  error?: string;
 }
 
 interface InterviewData {
-  fileName?: string;
-  duration?: string;
-  status?: string;
+  // Common fields
   overallScore?: number;
   grade?: string;
   performanceLevel?: string;
@@ -210,58 +202,223 @@ interface InterviewData {
   immediateActionItems?: string[];
   longTermDevelopment?: string[];
   performanceBreakdown?: BreakdownItem[];
+  status?: string;
+  
+  // Upload pipeline specific
+  fileName?: string;
+  duration?: string;
   dominantEmotion?: string;
   emotionConfidence?: number;
   transcript?: string;
-  transcriptData?: TranscriptEntry[]; // ✅ added structured transcript
-  wordCount?: number;                // ✅ total words
-  sentimentBreakdown?: SentimentBreakdown; // ✅ sentiment summary
+  transcriptData?: TranscriptEntry[];
+  wordCount?: number;
+  sentimentBreakdown?: SentimentBreakdown;
   allEmotions?: EmotionItem[];
   communicationStyle?: string;
+  
+  // Practice pipeline specific
+  role?: string;
+  questions?: string[];
+  perQuestion?: PracticeQuestionAnswer[];
+  summary?: any;
+  complete?: boolean;
 }
-
 
 // === MAIN COMPONENT ===
 const FeedbackPage: React.FC = () => {
   const location = useLocation();
-  const { userId, interviewId } = (location.state || {}) as {
+  const navigate = useNavigate();
+  const { userId, interviewId, source = "upload", role } = (location.state || {}) as {
     userId: string;
     interviewId: string;
+    source: "upload" | "practice";
+    role?: string;
   };
 
   const [data, setData] = useState<InterviewData | null>(null);
   const [tab, setTab] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // --- Real-time Firestore listener (flattens `feedback`) ---
+  // --- Real-time Firestore listener ---
   useEffect(() => {
-    if (!userId || !interviewId) return;
-    const ref = doc(db, "users", userId, "interviews", interviewId);
+    if (!userId || !interviewId) {
+      console.error("Missing userId or interviewId");
+      setLoading(false);
+      return;
+    }
+
+    // Different collection based on source
+    const collectionName = source === "practice" ? "practiceSessions" : "interviews";
+    const ref = doc(db, "users", userId, collectionName, interviewId);
 
     const unsub = onSnapshot(ref, (snap) => {
       if (snap.exists()) {
         const raw = snap.data() as any;
-        const feedback = (raw?.feedback ?? {}) as Partial<InterviewData>;
-        // Flatten and prefer explicit top-level (e.g., transcript) while merging feedback values
-        const merged: InterviewData = {
-          ...feedback,
-          ...raw,
-          // Feedback might duplicate fileName/duration; enforce top-level fields to exist
-          fileName: raw?.fileName ?? feedback?.fileName,
-          duration: raw?.duration ?? feedback?.duration,
-          overallScore: raw?.overallScore ?? feedback?.overallScore,
-          aiConfidence: raw?.aiConfidence ?? feedback?.aiConfidence,
-          speechQuality: raw?.speechQuality ?? feedback?.speechQuality,
-          grade: raw?.grade ?? feedback?.grade,
-          performanceLevel: raw?.performanceLevel ?? feedback?.performanceLevel,
-        };
-        setData(merged);
+        
+        if (source === "practice") {
+          // Handle practice session data structure
+          const merged: InterviewData = {
+            fileName: "Practice Session",
+            role: raw?.role || role,
+            duration: "8 Questions",
+            overallScore: raw?.summary?.overallScore,
+            grade: raw?.summary?.grade,
+            performanceLevel: raw?.summary?.performanceLevel,
+            aiConfidence: raw?.summary?.aiConfidence,
+            speechQuality: raw?.summary?.speechQuality,
+            keyStrengths: raw?.summary?.keyStrengths || [],
+            areasForImprovement: raw?.summary?.areasForImprovement || [],
+            immediateActionItems: raw?.summary?.immediateActionItems || [],
+            longTermDevelopment: raw?.summary?.longTermDevelopment || [],
+            performanceBreakdown: raw?.summary?.performanceBreakdown || [],
+            status: raw?.complete ? "completed" : "processing",
+            questions: raw?.questions || [],
+            perQuestion: raw?.perQuestion || [],
+            summary: raw?.summary || {},
+            complete: raw?.complete || false,
+          };
+          setData(merged);
+        } else {
+          // Handle upload pipeline data structure (existing logic)
+          const feedback = (raw?.feedback ?? {}) as Partial<InterviewData>;
+          const merged: InterviewData = {
+            ...feedback,
+            ...raw,
+            fileName: raw?.fileName ?? feedback?.fileName,
+            duration: raw?.duration ?? feedback?.duration,
+            overallScore: raw?.overallScore ?? feedback?.overallScore,
+            aiConfidence: raw?.aiConfidence ?? feedback?.aiConfidence,
+            speechQuality: raw?.speechQuality ?? feedback?.speechQuality,
+            grade: raw?.grade ?? feedback?.grade,
+            performanceLevel: raw?.performanceLevel ?? feedback?.performanceLevel,
+            status: "completed", // Upload pipeline items are complete when they exist
+          };
+          setData(merged);
+        }
+      } else {
+        console.error("Document doesn't exist");
       }
       setLoading(false);
     });
 
     return () => unsub();
-  }, [userId, interviewId]);
+  }, [userId, interviewId, source, role]);
+
+  // --- PDF Export Function ---
+  const handleExportPDF = () => {
+    if (!data) return;
+
+    const d = data;
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+
+    // Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(source === "practice" ? "Practice Session Report" : "Interview Report", 40, 50);
+    
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    
+    if (source === "practice") {
+      doc.text(`Role: ${d.role || "N/A"}`, 40, 70);
+      doc.text(`Questions Completed: ${d.perQuestion?.filter(q => !q.skipped).length || 0}/8`, 40, 90);
+    } else {
+      doc.text(`File: ${d.fileName || "N/A"}`, 40, 70);
+      doc.text(`Duration: ${d.duration || "N/A"}`, 40, 90);
+    }
+    
+    doc.text(`Performance Level: ${d.performanceLevel || "—"}`, 40, 110);
+    doc.text(`Grade: ${d.grade || "N/A"}`, 40, 130);
+    doc.text(`Overall Score: ${Math.round(d.overallScore || 0)} / 100`, 40, 150);
+
+    // Divider
+    doc.setDrawColor(200);
+    doc.line(40, 160, 555, 160);
+
+    // Performance Breakdown Table
+    if (d.performanceBreakdown?.length) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Performance Breakdown", 40, 185);
+      autoTable(doc, {
+        startY: 195,
+        head: [["Category", "Score", "Summary"]],
+        body: d.performanceBreakdown.map((p) => [
+          p.category,
+          p.score.toString(),
+          p.summary || "—",
+        ]),
+        theme: "grid",
+        styles: { fontSize: 10, cellPadding: 4 },
+        headStyles: { fillColor: [20, 184, 166], textColor: 255 },
+      });
+    }
+
+    let y = (doc as any).lastAutoTable?.finalY + 25 || 220;
+
+    // Key Strengths
+    if (d.keyStrengths?.length) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Key Strengths", 40, y);
+      doc.setFont("helvetica", "normal");
+      d.keyStrengths.forEach((s, i) => doc.text(`• ${s}`, 50, y + 15 + i * 15));
+      y += 40 + d.keyStrengths.length * 15;
+    }
+
+    // Areas for Improvement
+    if (d.areasForImprovement?.length) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Areas for Improvement", 40, y);
+      doc.setFont("helvetica", "normal");
+      d.areasForImprovement.forEach((s, i) => doc.text(`• ${s}`, 50, y + 15 + i * 15));
+      y += 40 + d.areasForImprovement.length * 15;
+    }
+
+    // Practice-specific: Questions & Answers
+    if (source === "practice" && d.perQuestion?.length) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Questions & Responses", 40, y);
+      y += 20;
+      
+      d.perQuestion.forEach((qa, i) => {
+        doc.setFont("helvetica", "bold");
+        doc.text(`Q${i + 1}: ${qa.question}`, 50, y);
+        y += 15;
+        doc.setFont("helvetica", "normal");
+        if (qa.skipped) {
+          doc.text("[Skipped]", 50, y);
+        } else {
+          const text = doc.splitTextToSize(qa.transcript || "No transcript available", 480);
+          doc.text(text.slice(0, 5), 50, y);
+          y += text.slice(0, 5).length * 12;
+        }
+        y += 20;
+      });
+    }
+
+    // Footer
+    const footerY = doc.internal.pageSize.height - 40;
+    doc.setFontSize(9);
+    doc.setTextColor(130);
+    doc.text("Generated by Interview Analyzer AI", 40, footerY);
+
+    const fileName = source === "practice" 
+      ? `practice_session_${d.role?.replace(/\s+/g, "_") || "report"}.pdf`
+      : `${d.fileName?.replace(/\s+/g, "_") || "interview_report"}.pdf`;
+    
+    doc.save(fileName);
+  };
+
+  // Helper functions
+  const prettyScore = (n?: number) =>
+    typeof n === "number" && !Number.isNaN(n) ? Math.round(n) : 0;
+
+  const handleBack = () => {
+    if (source === "practice") {
+      navigate("/practice");
+    } else {
+      navigate("/landing");
+    }
+  };
 
   // --- UI States ---
   if (loading || !data)
@@ -271,13 +428,15 @@ const FeedbackPage: React.FC = () => {
         <Container sx={{ mt: 10, textAlign: "center" }}>
           <CircularProgress sx={{ color: "#14b8a6" }} />
           <Typography variant="h6" color="text.secondary" sx={{ mt: 2 }}>
-            Uploading and analyzing your interview...
+            {source === "practice" 
+              ? "Processing your practice session..." 
+              : "Uploading and analyzing your interview..."}
           </Typography>
         </Container>
       </ThemeProvider>
     );
 
-  if (data.status !== "completed")
+  if (data.status !== "completed" && source === "upload")
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
@@ -296,134 +455,6 @@ const FeedbackPage: React.FC = () => {
   // === Render when completed ===
   const d = data;
 
-  // ----------------------------
-// 📄 PDF Export Function
-// ----------------------------
-const handleExportPDF = () => {
-  if (!data) return;
-
-  const d = data; // use current feedback data
-  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-  // Header
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text(`Interview Report`, 40, 50);
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "normal");
-  doc.text(`File: ${d.fileName || "N/A"}`, 40, 70);
-  doc.text(`Duration: ${d.duration || "N/A"}`, 40, 90);
-  doc.text(`Performance Level: ${d.performanceLevel || "—"}`, 40, 110);
-  doc.text(`Grade: ${d.grade || "N/A"}`, 40, 130);
-  doc.text(`Overall Score: ${Math.round(d.overallScore || 0)} / 100`, 40, 150);
-
-  // Divider
-  doc.setDrawColor(200);
-  doc.line(40, 160, 555, 160);
-
-  // --- Performance Breakdown Table ---
-  if (d.performanceBreakdown?.length) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Performance Breakdown", 40, 185);
-    autoTable(doc, {
-      startY: 195,
-      head: [["Category", "Score", "Summary"]],
-      body: d.performanceBreakdown.map((p) => [
-        p.category,
-        p.score.toString(),
-        p.summary || "—",
-      ]),
-      theme: "grid",
-      styles: { fontSize: 10, cellPadding: 4 },
-      headStyles: { fillColor: [20, 184, 166], textColor: 255 },
-    });
-  }
-
-  let y = (doc as any).lastAutoTable?.finalY + 25 || 220;
-
-  // --- Key Strengths ---
-  if (d.keyStrengths?.length) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Key Strengths", 40, y);
-    doc.setFont("helvetica", "normal");
-    d.keyStrengths.forEach((s, i) => doc.text(`• ${s}`, 50, y + 15 + i * 15));
-    y += 40 + d.keyStrengths.length * 15;
-  }
-
-  // --- Areas for Improvement ---
-  if (d.areasForImprovement?.length) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Areas for Improvement", 40, y);
-    doc.setFont("helvetica", "normal");
-    d.areasForImprovement.forEach((s, i) => doc.text(`• ${s}`, 50, y + 15 + i * 15));
-    y += 40 + d.areasForImprovement.length * 15;
-  }
-
-  // --- Immediate Actions ---
-  if (d.immediateActionItems?.length) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Immediate Action Items", 40, y);
-    doc.setFont("helvetica", "normal");
-    d.immediateActionItems.forEach((s, i) => doc.text(`• ${s}`, 50, y + 15 + i * 15));
-    y += 40 + d.immediateActionItems.length * 15;
-  }
-
-  // --- Long-term Development ---
-  if (d.longTermDevelopment?.length) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Long-Term Development", 40, y);
-    doc.setFont("helvetica", "normal");
-    d.longTermDevelopment.forEach((s, i) => doc.text(`• ${s}`, 50, y + 15 + i * 15));
-    y += 40 + d.longTermDevelopment.length * 15;
-  }
-
-  // --- Emotion Analysis ---
-  doc.setFont("helvetica", "bold");
-  doc.text("Emotion Analysis", 40, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(
-    `Dominant Emotion: ${d.dominantEmotion || "—"} (${Math.round(
-      (d.emotionConfidence ?? 0) * 100
-    )}%)`,
-    50,
-    y + 20
-  );
-
-  if (d.allEmotions?.length) {
-    y += 35;
-    autoTable(doc, {
-      startY: y,
-      head: [["Emotion", "Score"]],
-      body: d.allEmotions.map((e) => [e.label, `${Math.round(e.score * 100)}%`]),
-      theme: "plain",
-      styles: { fontSize: 10, cellPadding: 4 },
-    });
-  }
-
-  // --- Transcript excerpt ---
-  if (d.transcript) {
-    y = (doc as any).lastAutoTable?.finalY + 30 || y + 30;
-    doc.setFont("helvetica", "bold");
-    doc.text("Transcript (Excerpt)", 40, y);
-    doc.setFont("helvetica", "normal");
-    const text = doc.splitTextToSize(d.transcript, 500);
-    doc.text(text.slice(0, 20), 50, y + 20); // partial transcript
-  }
-
-  // --- Footer ---
-  const footerY = doc.internal.pageSize.height - 40;
-  doc.setFontSize(9);
-  doc.setTextColor(130);
-  doc.text("Generated by Interview Analyzer AI", 40, footerY);
-
-  doc.save(`${d.fileName?.replace(/\s+/g, "_") || "interview_report"}.pdf`);
-};
-
-
-  // Helpers
-  const prettyScore = (n?: number) =>
-    typeof n === "number" && !Number.isNaN(n) ? Math.round(n) : 0;
-
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -440,9 +471,22 @@ const handleExportPDF = () => {
             }}
           >
             <Box>
-              <Typography variant="h6">Interview Analysis Complete</Typography>
+              <Button
+                startIcon={<ArrowBackIcon />}
+                onClick={handleBack}
+                sx={{ mb: 1, color: "text.secondary" }}
+              >
+                {source === "practice" ? "Back to Practice" : "Back to Dashboard"}
+              </Button>
+              <Typography variant="h6">
+                {source === "practice" 
+                  ? "Practice Session Analysis Complete" 
+                  : "Interview Analysis Complete"}
+              </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Analysis for: <b>{d.fileName}</b>
+                {source === "practice" 
+                  ? `Practice Role: ${d.role || "N/A"}` 
+                  : `Analysis for: ${d.fileName || "N/A"}`}
               </Typography>
               <Box sx={{ display: "flex", gap: 1, mt: 2, flexWrap: "wrap" }}>
                 <Chip
@@ -453,7 +497,17 @@ const handleExportPDF = () => {
                     fontWeight: 600,
                   }}
                 />
-                <Chip label={`${d.duration ?? "—"} Duration`} sx={{ bgcolor: "rgba(255,255,255,0.03)" }} />
+                {source === "practice" ? (
+                  <Chip 
+                    label={`${d.perQuestion?.filter(q => !q.skipped).length || 0}/8 Questions Completed`} 
+                    sx={{ bgcolor: "rgba(255,255,255,0.03)" }} 
+                  />
+                ) : (
+                  <Chip 
+                    label={`${d.duration ?? "—"} Duration`} 
+                    sx={{ bgcolor: "rgba(255,255,255,0.03)" }} 
+                  />
+                )}
                 <Chip
                   label={`Score: ${prettyScore(d.overallScore)}/100`}
                   sx={{ bgcolor: "rgba(255,255,255,0.03)" }}
@@ -463,9 +517,8 @@ const handleExportPDF = () => {
             <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
               <GradientButton icon={<RefreshIcon />}>Regenerate</GradientButton>
               <GradientButton icon={<DownloadIcon />} onClick={handleExportPDF}>
-  Export PDF
-</GradientButton>
-
+                Export PDF
+              </GradientButton>
               <GradientButton icon={<ShareIcon />}>Share</GradientButton>
             </Box>
           </Box>
@@ -480,7 +533,7 @@ const handleExportPDF = () => {
             TabIndicatorProps={{ style: { background: "#14b8a6", height: 3 } }}
           >
             <Tab label="Summary" />
-            <Tab label="Transcript" />
+            <Tab label={source === "practice" ? "Questions & Answers" : "Transcript"} />
             <Tab label="Detailed Feedback" />
           </Tabs>
         </Paper>
@@ -547,6 +600,11 @@ const handleExportPDF = () => {
                         <Typography variant="body2">{s}</Typography>
                       </li>
                     ))}
+                    {d.keyStrengths?.length === 0 && (
+                      <Typography variant="body2" color="text.secondary">
+                        No strengths identified yet.
+                      </Typography>
+                    )}
                   </Box>
                 </CardContent>
               </MuiCard>
@@ -562,6 +620,11 @@ const handleExportPDF = () => {
                         <Typography variant="body2">{s}</Typography>
                       </li>
                     ))}
+                    {d.areasForImprovement?.length === 0 && (
+                      <Typography variant="body2" color="text.secondary">
+                        No improvement areas identified yet.
+                      </Typography>
+                    )}
                   </Box>
                 </CardContent>
               </MuiCard>
@@ -569,217 +632,193 @@ const handleExportPDF = () => {
           </Box>
         )}
 
-{/* --- Transcript Tab --- */}
-
-
-{/* --- Transcript Tab --- */}
-{tab === 1 && (
-  <Paper sx={{ p: 3, borderRadius: 3 }}>
-    {/* Header */}
-    <Box
-      sx={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        mb: 2,
-        flexWrap: "wrap",
-        gap: 1,
-      }}
-    >
-      <Box>
-        <Typography variant="h6">Speech Analysis & Transcript</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Complete conversation breakdown with sentiment analysis
-        </Typography>
-      </Box>
-
-      {/* Copy & Download Buttons */}
-      <Box sx={{ display: "flex", gap: 1 }}>
-        <GradientButton icon={<ShareIcon />}>Copy</GradientButton>
-        <GradientButton icon={<DownloadIcon />}>Download</GradientButton>
-      </Box>
-    </Box>
-
-    {/* Overview Stats */}
-    <Box
-      sx={{
-        display: "flex",
-        justifyContent: "space-around",
-        alignItems: "center",
-        textAlign: "center",
-        my: 3,
-        flexWrap: "wrap",
-        gap: 3,
-      }}
-    >
-      <Box>
-        <Typography variant="body2" color="text.secondary">
-          Duration
-        </Typography>
-        <Typography variant="h6">{d.duration || "—"}</Typography>
-      </Box>
-      <Box>
-        <Typography variant="body2" color="text.secondary">
-          Word Count
-        </Typography>
-        <Typography variant="h6">{d.wordCount ?? "—"}</Typography>
-      </Box>
-      <Box>
-        <Typography variant="body2" color="text.secondary">
-          Avg Confidence
-        </Typography>
-        <Typography variant="h6">{d.aiConfidence ?? 0}%</Typography>
-      </Box>
-      <Box>
-        <Typography variant="body2" color="text.secondary">
-          Sentiment
-        </Typography>
-        <Box sx={{ display: "flex", gap: 1, justifyContent: "center", mt: 1 }}>
-          <Box sx={{ width: 14, height: 14, borderRadius: "50%", bgcolor: "#22c55e" }} />
-          <Box sx={{ width: 14, height: 14, borderRadius: "50%", bgcolor: "#a3a3a3" }} />
-          <Box sx={{ width: 14, height: 14, borderRadius: "50%", bgcolor: "#ef4444" }} />
-        </Box>
-      </Box>
-    </Box>
-
-    <Divider sx={{ mb: 3, borderColor: "rgba(255,255,255,0.1)" }} />
-
-    {/* Full Transcript */}
-    <Typography variant="h6" sx={{ mb: 2 }}>
-      Full Transcript
-    </Typography>
-
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-      }}
-    >
-      {(d.transcriptData ?? []).map((entry, i) => {
-        const isCandidate = entry.speaker.toLowerCase().includes("candidate") || entry.speaker.toLowerCase().includes("mary");
-        return (
-          <Box
-            key={i}
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: isCandidate ? "flex-end" : "flex-start",
-              width: "100%",
-            }}
-          >
-            <Box
-              sx={{
-                maxWidth: "80%",
-                p: 2,
-                borderRadius: 3,
-                position: "relative",
-                bgcolor: isCandidate
-                  ? "rgba(34,197,94,0.1)" // Candidate - green tint
-                  : "rgba(255,255,255,0.05)", // Interviewer - neutral tint
-                border: "1px solid rgba(255,255,255,0.06)",
-                textAlign: "left",
-              }}
-            >
-              {/* Speaker + Time */}
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                <Typography
-                  variant="subtitle2"
+        {/* --- Transcript/Q&A Tab --- */}
+        {tab === 1 && (
+          <Paper sx={{ p: 3, borderRadius: 3 }}>
+            {source === "practice" ? (
+              // Practice Session Q&A View
+              <Box>
+                <Box
                   sx={{
-                    color: isCandidate ? "#22c55e" : "#14b8a6",
-                    fontWeight: 600,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mb: 3,
                   }}
                 >
-                  {entry.speaker}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {entry.time}
-                </Typography>
+                  <Box>
+                    <Typography variant="h6">Practice Questions & Answers</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Review your responses to each question
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <GradientButton icon={<DownloadIcon />}>Download</GradientButton>
+                  </Box>
+                </Box>
+
+                <Divider sx={{ mb: 3, borderColor: "rgba(255,255,255,0.1)" }} />
+
+                {d.perQuestion?.map((qa, i) => (
+                  <Box
+                    key={i}
+                    sx={{
+                      mb: 3,
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: "rgba(255,255,255,0.02)",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                    }}
+                  >
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "start", mb: 1 }}>
+                      <Typography variant="subtitle1" sx={{ color: "#14b8a6", fontWeight: 600 }}>
+                        Question {i + 1}
+                      </Typography>
+                      {qa.skipped ? (
+                        <Chip label="Skipped" size="small" sx={{ bgcolor: "rgba(239,68,68,0.2)", color: "#ef4444" }} />
+                      ) : qa.emotion && (
+                        <Chip 
+                          label={`${qa.emotion.label} (${Math.round(qa.emotion.confidence * 100)}%)`} 
+                          size="small" 
+                          sx={{ bgcolor: "rgba(20,184,166,0.1)", color: "#14b8a6" }}
+                        />
+                      )}
+                    </Box>
+                    
+                    <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
+                      {qa.question}
+                    </Typography>
+                    
+                    <Box sx={{ pl: 2, borderLeft: "3px solid rgba(255,255,255,0.1)" }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {qa.skipped 
+                          ? "[No response provided]" 
+                          : qa.error 
+                          ? `[Error: ${qa.error}]`
+                          : qa.transcript || "Processing transcript..."}
+                      </Typography>
+                    </Box>
+                    
+                    {qa.duration && !qa.skipped && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+                        Duration: {qa.duration}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+                
+                {(!d.perQuestion || d.perQuestion.length === 0) && (
+                  <Typography variant="body2" color="text.secondary">
+                    No question data available yet.
+                  </Typography>
+                )}
               </Box>
+            ) : (
+              // Upload Pipeline Transcript View (existing code)
+              <Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mb: 2,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="h6">Speech Analysis & Transcript</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Complete conversation breakdown
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <GradientButton icon={<ShareIcon />}>Copy</GradientButton>
+                    <GradientButton icon={<DownloadIcon />}>Download</GradientButton>
+                  </Box>
+                </Box>
 
-              {/* Message Text */}
-              <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
-                {entry.text}
-              </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-around",
+                    alignItems: "center",
+                    textAlign: "center",
+                    my: 3,
+                    flexWrap: "wrap",
+                    gap: 3,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Duration</Typography>
+                    <Typography variant="h6">{d.duration || "—"}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Word Count</Typography>
+                    <Typography variant="h6">{d.wordCount ?? "—"}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Avg Confidence</Typography>
+                    <Typography variant="h6">{d.aiConfidence ?? 0}%</Typography>
+                  </Box>
+                </Box>
 
-              {/* Sentiment chip (top-right corner of bubble) */}
-              <Chip
-                label={entry.sentiment}
-                size="small"
-                sx={{
-                  position: "absolute",
-                  top: 8,
-                  right: 8,
-                  bgcolor:
-                    entry.sentiment === "positive"
-                      ? "rgba(34,197,94,0.2)"
-                      : entry.sentiment === "negative"
-                      ? "rgba(239,68,68,0.2)"
-                      : "rgba(255,255,255,0.1)",
-                  color:
-                    entry.sentiment === "positive"
-                      ? "#22c55e"
-                      : entry.sentiment === "negative"
-                      ? "#ef4444"
-                      : "#d1d5db",
-                  fontWeight: 600,
-                  textTransform: "lowercase",
-                }}
-              />
-            </Box>
-          </Box>
-        );
-      })}
+                <Divider sx={{ mb: 3, borderColor: "rgba(255,255,255,0.1)" }} />
 
-      {/* Fallback if transcriptData missing */}
-      {(!d.transcriptData || d.transcriptData.length === 0) && (
-        <Typography variant="body2" color="text.secondary">
-          {d.transcript || "Transcript not available yet."}
-        </Typography>
-      )}
-    </Box>
+                <Typography variant="h6" sx={{ mb: 2 }}>Full Transcript</Typography>
 
-    {/* Sentiment Breakdown */}
-    {d.sentimentBreakdown && (
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Sentiment Breakdown
-        </Typography>
-
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-start" }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", width: "200px" }}>
-            <Typography>Positive</Typography>
-            <Chip
-              label={`${d.sentimentBreakdown.positive}%`}
-              size="small"
-              sx={{ bgcolor: "rgba(34,197,94,0.2)", color: "#22c55e", fontWeight: 600 }}
-            />
-          </Box>
-          <Box sx={{ display: "flex", justifyContent: "space-between", width: "200px" }}>
-            <Typography>Neutral</Typography>
-            <Chip
-              label={`${d.sentimentBreakdown.neutral}%`}
-              size="small"
-              sx={{ bgcolor: "rgba(163,163,163,0.2)", color: "#d4d4d4", fontWeight: 600 }}
-            />
-          </Box>
-          <Box sx={{ display: "flex", justifyContent: "space-between", width: "200px" }}>
-            <Typography>Negative</Typography>
-            <Chip
-              label={`${d.sentimentBreakdown.negative}%`}
-              size="small"
-              sx={{ bgcolor: "rgba(239,68,68,0.2)", color: "#ef4444", fontWeight: 600 }}
-            />
-          </Box>
-        </Box>
-      </Box>
-    )}
-  </Paper>
-)}
-
-
-
-
+                {d.transcriptData?.length ? (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    {d.transcriptData.map((entry, i) => {
+                      const isCandidate = entry.speaker.toLowerCase().includes("candidate");
+                      return (
+                        <Box
+                          key={i}
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: isCandidate ? "flex-end" : "flex-start",
+                            width: "100%",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              maxWidth: "80%",
+                              p: 2,
+                              borderRadius: 3,
+                              position: "relative",
+                              bgcolor: isCandidate
+                                ? "rgba(34,197,94,0.1)"
+                                : "rgba(255,255,255,0.05)",
+                              border: "1px solid rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{ color: isCandidate ? "#22c55e" : "#14b8a6", fontWeight: 600 }}
+                              >
+                                {entry.speaker}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {entry.time}
+                              </Typography>
+                            </Box>
+                            <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+                              {entry.text}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    {d.transcript || "Transcript not available yet."}
+                  </Typography>
+                )}
+              </Box>
+            )}
+          </Paper>
+        )}
 
         {/* --- Detailed Feedback Tab --- */}
         {tab === 2 && (
@@ -797,6 +836,11 @@ const handleExportPDF = () => {
                         <Typography variant="body2">{it}</Typography>
                       </li>
                     ))}
+                    {d.immediateActionItems?.length === 0 && (
+                      <Typography variant="body2" color="text.secondary">
+                        No immediate actions identified.
+                      </Typography>
+                    )}
                   </Box>
                 </CardContent>
               </MuiCard>
@@ -812,6 +856,11 @@ const handleExportPDF = () => {
                         <Typography variant="body2">{it}</Typography>
                       </li>
                     ))}
+                    {d.longTermDevelopment?.length === 0 && (
+                      <Typography variant="body2" color="text.secondary">
+                        No long-term recommendations yet.
+                      </Typography>
+                    )}
                   </Box>
                 </CardContent>
               </MuiCard>
@@ -824,7 +873,6 @@ const handleExportPDF = () => {
                   <Typography variant="h6" sx={{ mb: 2 }}>
                     Detailed Performance Breakdown
                   </Typography>
-
                   <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
                     {d.performanceBreakdown!.map((item, idx) => (
                       <Paper key={idx} sx={{ p: 2, borderRadius: 2 }}>
@@ -835,13 +883,11 @@ const handleExportPDF = () => {
                             sx={{ bgcolor: "rgba(255,255,255,0.05)" }}
                           />
                         </Box>
-
                         {item.summary && (
                           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                             {item.summary}
                           </Typography>
                         )}
-
                         {item.suggestions && item.suggestions.length > 0 && (
                           <>
                             <Divider sx={{ my: 1.5, borderColor: "rgba(255,255,255,0.07)" }} />
@@ -864,22 +910,7 @@ const handleExportPDF = () => {
               </MuiCard>
             )}
 
-            {/* Emotion Analysis (inside Detailed Feedback) */}
-            <MuiCard>
-              <CardContent>
-                <Typography variant="h6">Emotion Analysis</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Dominant emotion: <b>{d.dominantEmotion ?? "—"}</b>{" "}
-                  {typeof d.emotionConfidence === "number" && `• Confidence ${Math.round(d.emotionConfidence * 100)}%`}
-                </Typography>
 
-                <Box sx={{ mt: 2, display: "grid", gridTemplateColumns: "1fr", gap: 1 }}>
-                  {(d.allEmotions ?? []).map((e, i) => (
-                    <EmotionBar key={`${e.label}-${i}`} label={e.label} score={e.score} />
-                  ))}
-                </Box>
-              </CardContent>
-            </MuiCard>
           </Box>
         )}
       </Container>

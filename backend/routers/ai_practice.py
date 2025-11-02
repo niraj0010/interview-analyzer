@@ -23,7 +23,7 @@ if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
 PRIMARY_MODEL = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-1.5-flash"
+FALLBACK_MODEL = "gemini-2.0-flash"
 
 # Where raw audio is stored
 BASE_DIR = os.path.abspath(os.path.join(os.getcwd(), "uploads", "practice"))
@@ -244,18 +244,37 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
 You are an AI interview coach. Analyze this full mock interview transcript.
 Some questions may be marked [SKIPPED] — ignore those when scoring.
 
-Transcript:
-\"\"\"{merged[:18000]}\"\"\"  # truncated for safety
+Return JSON ONLY that matches this schema exactly:
 
-Return ONLY valid JSON with this schema:
 {{
   "overallScore": 0-100,
-  "summary": "string",
-  "strengths": ["string"],
-  "weaknesses": ["string"],
-  "recommendedImprovements": ["string"]
+  "grade": "string",
+  "performanceLevel": "string",
+  "aiConfidence": 0-100,
+  "speechQuality": 0-100,
+  "keyStrengths": ["string"],
+  "areasForImprovement": ["string"],
+  "performanceBreakdown": [
+    {{"category":"string","score":0-100,"summary":"string","suggestions":["string"]}}
+  ],
+  "immediateActionItems": ["string"],
+  "longTermDevelopment": ["string"],
+  "summary": "string"
 }}
-        """.strip()
+
+Guidelines:
+- Be concise, specific, and encouraging. Avoid repetition.
+- Use STAR-method advice when relevant.
+- Keep each suggestion under 15 words.
+- Ensure valid JSON (no markdown, no comments).
+- Grade: A (85-100), B+ (70-84), B (60-69), C (50-59), D (below 50)
+- Performance levels: "Exceptional", "Strong", "Competent", "Developing", "Needs Improvement"
+- Include 3-5 items in each array field
+- PerformanceBreakdown should cover: Communication, Technical Knowledge, Problem-Solving, Professionalism
+
+Transcript:
+\"\"\"{merged[:18000]}\"\"\"
+""".strip()
 
         try:
             out = model.generate_content(summary_prompt)
@@ -276,7 +295,7 @@ Return ONLY valid JSON with this schema:
         "perQuestion": per_q
     })
 
-    # ✅ Always return valid JSON
+    # Always return valid JSON
     return JSONResponse(content={
         "status": "completed",
         "summary": summary_json or {},
