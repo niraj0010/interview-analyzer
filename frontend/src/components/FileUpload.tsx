@@ -1,48 +1,69 @@
 import React, { useState } from "react";
 import { Brain } from "lucide-react";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import { Button, Typography, Paper, Box } from "@mui/material";
+import { Button, Typography, Paper, Box, LinearProgress } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { getAuth } from "firebase/auth";
 
 export const FileUpload: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploading, setUploading] = useState<boolean>(false);
   const navigate = useNavigate();
 
-  // ✅ Upload to FastAPI backend
   const handleFileUpload = async (file: File) => {
+    const auth = getAuth();
+    const user = auth.currentUser;
+
+    if (!user) {
+      alert("Please sign in first.");
+      return;
+    }
+
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("user_id", user.uid);
 
     try {
+      setUploading(true);
+      setUploadProgress(15);
+
       const response = await fetch("http://127.0.0.1:8000/analyze", {
         method: "POST",
         body: formData,
       });
 
+      setUploadProgress(70);
+
       if (!response.ok) throw new Error("Upload failed");
       const data = await response.json();
 
+      setUploadProgress(100);
       console.log("✅ Upload success:", data);
 
-      // navigate to analysis page with backend response
-      navigate("/analysis", { state: { result: data } });
+      // ✅ Navigate to analysis (FeedbackPage) with Firestore reference
+      navigate("/feedback", {
+        state: { userId: data.userId, interviewId: data.interviewId },
+      });
     } catch (error) {
       console.error("❌ Upload error:", error);
       alert("Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
     }
   };
 
-  // ✅ Handle file input
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       const file = event.target.files[0];
       setSelectedFile(file);
-      handleFileUpload(file); // upload immediately
+      handleFileUpload(file); // auto upload
     }
   };
 
   const handlePastInterviewsClick = () => {
-    navigate("/profile"); // ✅ Go to user profile
+    navigate("/profile");
   };
 
   return (
@@ -58,7 +79,7 @@ export const FileUpload: React.FC = () => {
         padding: "3rem 1rem",
       }}
     >
-      {/* ======= Title Section ======= */}
+      {/* ===== Title ===== */}
       <Box sx={{ textAlign: "center", mb: 5 }}>
         <Box
           sx={{
@@ -108,12 +129,11 @@ export const FileUpload: React.FC = () => {
           }}
         >
           Upload mock interview recordings for comprehensive speech-to-text
-          conversion, real-time emotion detection, and personalized performance
-          feedback.
+          conversion, emotion detection, and personalized AI feedback.
         </Typography>
       </Box>
 
-      {/* ======= Upload Card ======= */}
+      {/* ===== Upload Card ===== */}
       <Paper
         elevation={6}
         sx={{
@@ -135,7 +155,6 @@ export const FileUpload: React.FC = () => {
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
           Upload your video or audio
         </Typography>
-
         <Typography variant="body2" sx={{ color: "#94a3b8", mb: 3 }}>
           Click below or drag and drop your file here
         </Typography>
@@ -143,6 +162,7 @@ export const FileUpload: React.FC = () => {
         <Button
           variant="contained"
           component="label"
+          disabled={uploading}
           sx={{
             backgroundColor: "#14b8a6",
             "&:hover": { backgroundColor: "#0d9488" },
@@ -152,11 +172,11 @@ export const FileUpload: React.FC = () => {
             py: 1.2,
           }}
         >
-          {selectedFile ? "Change File" : "Choose File"}
+          {uploading ? "Uploading..." : selectedFile ? "Change File" : "Choose File"}
           <input
             hidden
             type="file"
-            accept="audio/*,video/*" // ✅ Restrict file types
+            accept="audio/*,video/*"
             onChange={handleFileChange}
           />
         </Button>
@@ -174,9 +194,33 @@ export const FileUpload: React.FC = () => {
             {selectedFile.name}
           </Typography>
         )}
+
+        {uploading && (
+          <Box sx={{ width: "100%", mt: 3 }}>
+            <LinearProgress
+              variant="determinate"
+              value={uploadProgress}
+              sx={{
+                height: 10,
+                borderRadius: 2,
+                backgroundColor: "rgba(255,255,255,0.1)",
+                "& .MuiLinearProgress-bar": {
+                  background:
+                    "linear-gradient(90deg, #14b8a6, #10b981, #0d9488)",
+                },
+              }}
+            />
+            <Typography
+              variant="body2"
+              sx={{ mt: 1, color: "#14b8a6" }}
+            >
+              Uploading... {uploadProgress}%
+            </Typography>
+          </Box>
+        )}
       </Paper>
 
-      {/* ======= Supported Formats ======= */}
+      {/* Supported Formats */}
       <Typography
         variant="body2"
         sx={{
@@ -188,14 +232,8 @@ export const FileUpload: React.FC = () => {
         Supported formats: .mp3, .wav, .mp4, .mov, .avi, .webm
       </Typography>
 
-      {/* ======= Centered Single Button ======= */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          mt: 5,
-        }}
-      >
+      {/* Button */}
+      <Box sx={{ display: "flex", justifyContent: "center", mt: 5 }}>
         <Button
           variant="outlined"
           onClick={handlePastInterviewsClick}
