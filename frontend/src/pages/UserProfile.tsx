@@ -353,7 +353,7 @@ const UserProfile: React.FC = () => {
           email: userData.email,
           role: userData.jobTitle,
           bio: `${userData.education} student based in ${userData.location}.`,
-          avatarUrl: (userData.avatarUrl as string) || "https://i.pravatar.cc/150?img=32",
+         avatarUrl: (userData.avatarUrl as string) || "https://www.immerse.education/wp-content/uploads/2022/02/Computer-Science.jpg",
           pastInterviews: interviewsList,
         });
 
