@@ -25,16 +25,23 @@ EMOTION_MODEL = pipeline(
     model="r-f/wav2vec-english-speech-emotion-recognition"
 )
 
-# Firestore (optional)
+# ========= FIRESTORE INIT =========
 db = None
-if FIREBASE_CREDENTIALS and os.path.exists(FIREBASE_CREDENTIALS):
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(FIREBASE_CREDENTIALS)
-        firebase_admin.initialize_app(cred)
-    db = firestore.client()
-    print("Firestore initialized successfully.")
+abs_path = os.path.abspath(FIREBASE_CREDENTIALS)
+print(f"🧩 Checking Firestore credentials at: {abs_path}")
+
+if FIREBASE_CREDENTIALS and os.path.exists(abs_path):
+    try:
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(abs_path)
+            firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        print("✅ Firestore initialized successfully.")
+    except Exception as e:
+        print(f"❌ Firestore init failed: {e}")
 else:
-    print("ℹ Firestore disabled (FIREBASE_CREDENTIALS file missing or path incorrect).")
+    print("⚠️ Firestore disabled — credentials file missing or incorrect path.")
+
 
 
 # ========= HELPERS =========
@@ -76,6 +83,7 @@ def detect_emotion(wav_path: str):
     return top["label"], float(top["score"]), res
 
 
+
 # ========= GEMINI REST CALL (FIXED) =========
 def gemini_generate(prompt: str, model: str = None) -> str:
     """Use REST API for Gemini (AI Studio key format)."""
@@ -83,25 +91,21 @@ def gemini_generate(prompt: str, model: str = None) -> str:
         print("  GOOGLE_API_KEY missing — Gemini skipped.")
         return None
 
-    # Try different model names in order of preference (Updated for Gemini 2.0/2.5)
     models_to_try = [
-        "gemini-2.5-flash",        # Newest and best
-        "gemini-2.0-flash",        # Stable alternative
-        "gemini-flash-latest",     # Always uses latest
-        "gemini-2.5-flash-lite",   # Faster, lighter version
-        "gemini-pro-latest"        # Pro model fallback
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-flash-latest",
+        "gemini-2.5-flash-lite",
+        "gemini-pro-latest"
     ]
     
     if model:
-        # If a specific model is requested, try it first
         models_to_try = [model] + [m for m in models_to_try if m != model]
 
     last_error = None
     
     for model_name in models_to_try:
-        # AI Studio uses ?key= instead of Bearer token
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
-
         headers = {"Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
@@ -127,18 +131,16 @@ def gemini_generate(prompt: str, model: str = None) -> str:
             last_error = str(e)
             continue
     
-    # If all models failed, raise the last error
     raise HTTPException(status_code=500, detail=f"All Gemini models failed. Last error: {last_error}")
 
 
-# ========= ALTERNATIVE: List Available Models (for debugging) =========
+
+# ========= MODEL LISTING =========
 def list_available_models():
-    """List all available Gemini models for debugging."""
     if not GOOGLE_API_KEY:
         return []
     
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GOOGLE_API_KEY}"
-    
     try:
         resp = requests.get(url, timeout=30)
         if resp.status_code == 200:
@@ -157,6 +159,7 @@ def list_available_models():
     except Exception as e:
         print(f" Error listing models: {e}")
         return []
+
 
 
 # ========= PROMPT TEMPLATE =========
@@ -188,9 +191,9 @@ Guidelines:
 """
 
 
-# ========= GEMINI HANDLER (REST) =========
+
+# ========= GEMINI HANDLER =========
 def gemini_feedback_json(transcript: str, emotion: str, conf: float, file_name: str, duration: str):
-    """Generate structured JSON feedback via Gemini REST API."""
     if not GOOGLE_API_KEY:
         print(" Gemini feedback skipped (no API key).")
         return None
@@ -201,7 +204,7 @@ def gemini_feedback_json(transcript: str, emotion: str, conf: float, file_name: 
     DetectedEmotion: {emotion} (confidence {conf:.2f})
 
     Transcript:
-    \"\"\"{transcript[:8000]}\"\"\"  # Shortened for faster responses
+    \"\"\"{transcript[:8000]}\"\"\"
     """
 
     print("ℹ Calling Gemini via REST...")
@@ -210,7 +213,6 @@ def gemini_feedback_json(transcript: str, emotion: str, conf: float, file_name: 
         raise HTTPException(status_code=500, detail="Empty response from Gemini REST API.")
 
     def _extract_and_parse_json(raw_text: str) -> dict:
-        """Extract JSON from Gemini text response."""
         match = re.search(r"\{.*\}", raw_text, re.DOTALL)
         if not match:
             raise ValueError("No JSON found in Gemini response.")
@@ -233,8 +235,8 @@ def gemini_feedback_json(transcript: str, emotion: str, conf: float, file_name: 
     return data
 
 
+
 def save_report(uid: str, payload: dict):
-    """Save report to Firestore if available."""
     if not db:
         return None
     ref = (
@@ -246,10 +248,10 @@ def save_report(uid: str, payload: dict):
     return ref[1].id
 
 
-# ========= DEBUG ROUTE (NEW) =========
+
+# ========= DEBUG ROUTE =========
 @router.get("/debug/models")
 async def debug_models():
-    """List available Gemini models for debugging."""
     models = list_available_models()
     return {
         "available_models": models,
@@ -258,7 +260,8 @@ async def debug_models():
     }
 
 
-# ========= MAIN ROUTE =========
+
+# ========= MAIN ANALYZE ROUTE =========
 @router.post("/analyze")
 async def analyze_interview(
     background: BackgroundTasks,
@@ -266,8 +269,8 @@ async def analyze_interview(
     user_id: str = Form(default="demo-user")
 ):
     """
-    Upload → (ffmpeg) → Whisper → Emotion → Gemini → (optional) Firestore.
-    Returns structured JSON for UI.
+    Upload → Convert → Whisper → Emotion → Gemini → Firestore
+    Returns structured JSON for UI + live Firestore updates.
     """
     try:
         os.makedirs("uploads", exist_ok=True)
@@ -276,26 +279,53 @@ async def analyze_interview(
             tmp.write(await file.read())
         wav_path = raw_path + ".wav"
 
+        # 🔥 Create Firestore doc early for live updates
+        if not db:
+            raise HTTPException(status_code=500, detail="Firestore not initialized.")
+        user_ref = db.collection("users").document(user_id)
+        interview_ref = user_ref.collection("interviews").document()
+        interview_ref.set({
+            "fileName": file.filename,
+            "status": "uploading",
+            "createdAt": firestore.SERVER_TIMESTAMP
+        })
+        interview_id = interview_ref.id
+        print(f"📄 Firestore doc created: {interview_id}")
+
         # Convert + duration
         to_wav(raw_path, wav_path)
         duration = probe_duration(raw_path) or probe_duration(wav_path)
 
-        # 1️ Transcription
+        interview_ref.update({"status": "processing", "duration": duration})
+
+        # 1️⃣ Transcription
         t0 = time.time()
         transcript = whisper_transcribe(wav_path)
+        interview_ref.update({
+            "status": "transcribed",
+            "transcript": transcript[:5000]
+        })
         print(f"Whisper: {time.time()-t0:.2f}s")
 
-        # 2️ Emotion
+        # 2️⃣ Emotion
         t0 = time.time()
         dominant_emotion, confidence, all_emotions = detect_emotion(wav_path)
+        interview_ref.update({
+            "status": "emotion_detected",
+            "dominantEmotion": dominant_emotion,
+            "emotionConfidence": round(confidence, 3),
+            "allEmotions": all_emotions
+        })
         print(f"Emotion: {time.time()-t0:.2f}s")
 
-        # 3️ Gemini feedback via REST
+        # 3️⃣ Gemini feedback
         t0 = time.time()
         feedback = gemini_feedback_json(transcript, dominant_emotion, confidence, file.filename, duration)
         print(f"Gemini: {time.time()-t0:.2f}s")
 
-        result = {
+        # 🔥 Final Firestore update
+        final_result = {
+            "status": "completed",
             "fileName": file.filename,
             "duration": duration,
             "transcript": transcript,
@@ -304,10 +334,8 @@ async def analyze_interview(
             "allEmotions": all_emotions,
             "feedback": feedback,
         }
-
-        report_id = save_report(user_id, result) if feedback else None
-        if report_id:
-            result["reportId"] = report_id
+        interview_ref.update(final_result)
+        print("✅ Firestore updated with final data.")
 
         # Cleanup
         def _cleanup():
@@ -317,12 +345,17 @@ async def analyze_interview(
                         os.remove(p)
                 except Exception:
                     pass
-
         background.add_task(_cleanup)
-        return result
+
+        return {
+            "message": "success",
+            "interviewId": interview_id,
+            "userId": user_id,
+            "status": "completed"
+        }
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f" UNHANDLED EXCEPTION in /analyze: {e}")
+        print(f"❌ UNHANDLED EXCEPTION in /analyze: {e}")
         raise HTTPException(status_code=500, detail=str(e))
