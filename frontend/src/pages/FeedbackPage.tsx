@@ -256,28 +256,65 @@ const FeedbackPage: React.FC = () => {
         const raw = snap.data() as any;
         
         if (source === "practice") {
-          // Handle practice session data structure
+          // --- ⬇️ FIXED PRACTICE PIPELINE LOGIC ⬇️ ---
+          const summary = raw?.summary || {};
+          const perQuestionData = raw?.perQuestion || [];
+          
+          // --- FIX 1: Map all possible AI key names ---
+          const strengths = summary.keyStrengths ?? summary.strengths ?? [];
+          
+          // Combine all "improvement" fields from the AI
+          const improvements = [
+            ...(summary.areasForImprovement ?? []),
+            ...(summary.weaknesses ?? []),
+            ...(summary.recommendedImprovements ?? []),
+          ];
+          // Use the 'improvements' list as a fallback for the detailed feedback tab
+          const immediate = summary.immediateActionItems ?? improvements;
+          const longTerm = summary.longTermDevelopment ?? improvements;
+
+
+          // --- FIX 2: Calculate AI Confidence from 'perQuestion' data ---
+          let calculatedAIConfidence = 0;
+          if (perQuestionData.length > 0) {
+            const answeredQuestions = perQuestionData.filter((q: PracticeQuestionAnswer) => !q.skipped && q.emotion);
+            if (answeredQuestions.length > 0) {
+              const totalConfidence = answeredQuestions.reduce(
+                (acc: number, q: PracticeQuestionAnswer) => acc + (q.emotion?.confidence || 0), 0
+              );
+              // Multiply by 100 to get percentage
+              calculatedAIConfidence = Math.round((totalConfidence / answeredQuestions.length) * 100);
+            }
+          }
+
           const merged: InterviewData = {
             fileName: "Practice Session",
             role: raw?.role || role,
-            duration: "8 Questions",
-            overallScore: raw?.summary?.overallScore,
-            grade: raw?.summary?.grade,
-            performanceLevel: raw?.summary?.performanceLevel,
-            aiConfidence: raw?.summary?.aiConfidence,
-            speechQuality: raw?.summary?.speechQuality,
-            keyStrengths: raw?.summary?.keyStrengths || [],
-            areasForImprovement: raw?.summary?.areasForImprovement || [],
-            immediateActionItems: raw?.summary?.immediateActionItems || [],
-            longTermDevelopment: raw?.summary?.longTermDevelopment || [],
-            performanceBreakdown: raw?.summary?.performanceBreakdown || [],
+            duration: `${perQuestionData.length} Questions`, // Use actual length
+            overallScore: summary.overallScore,
+            grade: summary.grade,
+            performanceLevel: summary.performanceLevel,
+            
+            // Use calculated score if AI didn't provide one
+            aiConfidence: summary.aiConfidence ?? calculatedAIConfidence,
+            // SpeechQuality can't be calculated from text, so it will be 0% or null
+            speechQuality: summary.speechQuality, 
+
+            keyStrengths: strengths, 
+            areasForImprovement: improvements,
+            immediateActionItems: immediate,
+            longTermDevelopment: longTerm,
+            
+            performanceBreakdown: summary.performanceBreakdown || [],
             status: raw?.complete ? "completed" : "processing",
             questions: raw?.questions || [],
-            perQuestion: raw?.perQuestion || [],
-            summary: raw?.summary || {},
+            perQuestion: perQuestionData,
+            summary: summary,
             complete: raw?.complete || false,
           };
           setData(merged);
+          // --- ⬆️ END OF FIX ⬆️ ---
+
         } else {
           // Handle upload pipeline data structure (existing logic)
           const feedback = (raw?.feedback ?? {}) as Partial<InterviewData>;
@@ -321,7 +358,7 @@ const FeedbackPage: React.FC = () => {
     
     if (source === "practice") {
       doc.text(`Role: ${d.role || "N/A"}`, 40, 70);
-      doc.text(`Questions Completed: ${d.perQuestion?.filter(q => !q.skipped).length || 0}/8`, 40, 90);
+      doc.text(`Questions Completed: ${d.perQuestion?.filter(q => !q.skipped).length || 0}/${d.perQuestion?.length || 0}`, 40, 90);
     } else {
       doc.text(`File: ${d.fileName || "N/A"}`, 40, 70);
       doc.text(`Duration: ${d.duration || "N/A"}`, 40, 90);
@@ -499,7 +536,7 @@ const FeedbackPage: React.FC = () => {
                 />
                 {source === "practice" ? (
                   <Chip 
-                    label={`${d.perQuestion?.filter(q => !q.skipped).length || 0}/8 Questions Completed`} 
+                    label={`${d.perQuestion?.filter(q => !q.skipped).length || 0}/${d.perQuestion?.length || 0} Questions Completed`} 
                     sx={{ bgcolor: "rgba(255,255,255,0.03)" }} 
                   />
                 ) : (

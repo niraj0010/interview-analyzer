@@ -23,23 +23,17 @@ if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
 PRIMARY_MODEL = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-2.0-flash"
+FALLBACK_MODEL = "gemini-2.0-flash" 
 
-# Where raw audio is stored
 BASE_DIR = os.path.abspath(os.path.join(os.getcwd(), "uploads", "practice"))
 os.makedirs(BASE_DIR, exist_ok=True)
 
 
-# ---------------------- Helper Functions ----------------------
 def _get_model():
     try:
         return genai.GenerativeModel(PRIMARY_MODEL)
     except Exception:
-        try:
-            return genai.GenerativeModel(FALLBACK_MODEL)
-        except Exception as e:
-            print("Gemini unavailable:", e)
-            return None
+        return genai.GenerativeModel(FALLBACK_MODEL)
 
 
 def _json_array(text: str):
@@ -50,244 +44,205 @@ def _json_array(text: str):
     return json.loads(text)
 
 
-# ---------------------- Routes ----------------------
+# ---------------------- START PRACTICE ----------------------
 @router.get("/practice/start")
 def start_practice(role: str, uid: str):
-    """Create a new practice session and generate 8 questions."""
     session_id = str(uuid.uuid4())
     prompt = f"""
     Generate exactly 8 realistic interview questions for a {role}.
-    Return ONLY a JSON array of strings. No extra explanation.
+    Return ONLY a JSON array of strings.
     """
 
     model = _get_model()
-    if not model:
+    try:
+        res = model.generate_content(prompt)
+        questions = _json_array(res.text)[:8]
+    except:
         questions = [
-            f"Tell me about yourself and your background in {role}.",
-            "Describe a challenging problem you solved.",
-            "Walk me through a project you're proud of.",
-            "Tell me about a time you received difficult feedback.",
-            "Explain a trade-off you made under pressure.",
-            "What are your strengths and weaknesses?",
-            f"How do you stay current in {role} trends?",
-            f"Why should we hire you for {role}?",
+            f"Tell me about yourself in {role}.",
+            "Describe a challenge you solved.",
+            "Tell me a time you failed.",
+            "Walk me through a complex problem.",
+            "Describe pressure tradeoffs.",
+            "Strengths/Weaknesses?",
+            "How do you improve skills?",
+            f"Why are you a fit for {role}?"
         ]
-    else:
-        try:
-            res = model.generate_content(prompt)
-            questions = _json_array(res.text)
-            questions = questions[:8]
-        except Exception:
-            questions = [
-                f"Tell me about yourself and your background in {role}.",
-                "Describe a challenging problem you solved.",
-                "Walk me through a project you're proud of.",
-                "Tell me about a time you received difficult feedback.",
-                "Explain a trade-off you made under pressure.",
-                "What are your strengths and weaknesses?",
-                f"How do you stay current in {role} trends?",
-                f"Why should we hire you for {role}?",
-            ]
 
-    # Create local folder
     sess_dir = os.path.join(BASE_DIR, uid, session_id)
     os.makedirs(sess_dir, exist_ok=True)
 
-    # Create Firestore session document
     db.collection("users").document(uid).collection("practiceSessions").document(session_id).set({
         "role": role,
         "questions": questions,
         "createdAt": datetime.utcnow(),
         "complete": False,
-        "answers": []
+        "perQuestion": []
     })
 
-    return JSONResponse(content={"sessionId": session_id, "questions": questions})
+    return {"sessionId": session_id, "questions": questions}
 
 
-# --------------------------------------------------------------------
+# ---------------------- RECORD ANSWER ----------------------
 @router.post("/practice/answer")
 async def practice_answer(
     sessionId: str = Form(...),
     uid: str = Form(...),
     questionIndex: int = Form(...),
     question: str = Form(...),
-    skipped: bool = Form(...),
+    skipped: str = Form(...),
     file: UploadFile = File(None),
 ):
-    """Store each individual answer's metadata (not analyze yet)."""
-    if not uid or not sessionId:
-        raise HTTPException(400, "Missing uid/sessionId")
 
-    session_ref = (
-        db.collection("users").document(uid)
-        .collection("practiceSessions").document(sessionId)
-    )
-    if not session_ref.get().exists:
+    session_ref = db.collection("users").document(uid).collection("practiceSessions").document(sessionId)
+    snap = session_ref.get()
+
+    if not snap.exists:
         raise HTTPException(404, "Session not found")
 
-    # Skip case
-    if skipped and skipped in ("true", "True", True):
-        session_ref.update({
-            "answers": firestore.ArrayUnion([{
-                "questionIndex": questionIndex,
-                "question": question,
-                "skipped": True,
-                "timestamp": datetime.utcnow()
-            }])
-        })
-        return JSONResponse(content={"ok": True, "skipped": True})
+    data = snap.to_dict()
+    per = data.get("perQuestion", [])
 
-    # Upload path for audio
+    # normalize skipped boolean
+    is_skipped = skipped.lower() == "true"
+
+    if is_skipped:
+        per.append({
+            "questionIndex": questionIndex,
+            "question": question,
+            "skipped": True,
+            "timestamp": datetime.utcnow()
+        })
+        session_ref.update({"perQuestion": per})
+        return {"ok": True}
+
+    # must have audio
     if not file:
         raise HTTPException(400, "Missing audio file")
 
     sess_dir = os.path.join(BASE_DIR, uid, sessionId)
     os.makedirs(sess_dir, exist_ok=True)
 
-    filename = f"q{int(questionIndex) + 1}.webm"
+    filename = f"q{questionIndex + 1}.webm"
     raw_path = os.path.join(sess_dir, filename)
 
     with open(raw_path, "wb") as f:
         f.write(await file.read())
 
-    session_ref.update({
-        "answers": firestore.ArrayUnion([{
-            "questionIndex": questionIndex,
-            "question": question,
-            "skipped": False,
-            "filePath": raw_path,
-            "originalName": file.filename,
-            "timestamp": datetime.utcnow()
-        }])
+    per.append({
+        "questionIndex": questionIndex,
+        "question": question,
+        "skipped": False,
+        "filePath": raw_path,
+        "originalName": file.filename,
+        "timestamp": datetime.utcnow()
     })
 
-    return JSONResponse(content={"ok": True, "skipped": False})
+    session_ref.update({"perQuestion": per})
+    return {"ok": True}
 
 
-# --------------------------------------------------------------------
+# ---------------------- FINISH & ANALYZE ----------------------
 @router.post("/practice/finish")
 def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
-    """At the end, analyze all answers and return summarized feedback."""
-    if not uid or not sessionId:
-        raise HTTPException(400, "Missing uid/sessionId")
 
-    session_ref = (
-        db.collection("users").document(uid)
-        .collection("practiceSessions").document(sessionId)
-    )
-    snapshot = session_ref.get()
-    if not snapshot.exists:
+    session_ref = db.collection("users").document(uid).collection("practiceSessions").document(sessionId)
+    snap = session_ref.get()
+
+    if not snap.exists:
         raise HTTPException(404, "Session not found")
 
-    data = snapshot.to_dict()
+    data = snap.to_dict()
     questions = data.get("questions", [])
-    answers = data.get("answers", [])
+    answers = data.get("perQuestion", [])
 
-    combined_lines = []
+    combined = []
     per_q = []
 
-    # Process answers sequentially
     for a in sorted(answers, key=lambda x: x["questionIndex"]):
-        q_idx = int(a["questionIndex"])
-        q_text = a.get("question") or (
-            questions[q_idx] if q_idx < len(questions) else f"Question {q_idx + 1}"
-        )
+        q_idx = a["questionIndex"]
+        q_text = questions[q_idx]
 
         if a.get("skipped"):
-            combined_lines.append(f"Q{q_idx + 1}: {q_text}\n[SKIPPED]")
+            combined.append(f"Q{q_idx+1}: {q_text}\n[SKIPPED]")
             per_q.append({"questionIndex": q_idx, "question": q_text, "skipped": True})
             continue
 
-        raw_path = a.get("filePath")
-        if not raw_path or not os.path.exists(raw_path):
-            combined_lines.append(f"Q{q_idx + 1}: {q_text}\n[ERROR: audio missing]")
-            per_q.append({
-                "questionIndex": q_idx,
-                "question": q_text,
-                "skipped": False,
-                "error": "audio missing"
-            })
-            continue
+        raw = a["filePath"]
+        wav = raw + ".wav"
 
-        wav_path = raw_path + ".wav"
-        try:
-            to_wav(raw_path, wav_path)
-            duration = probe_duration(raw_path) or ""
-            transcript = whisper_transcribe(wav_path)
+        to_wav(raw, wav)
+        duration = probe_duration(raw)
+        transcript = whisper_transcribe(wav)
+        emo = analyze_emotion(wav)
+        label, score = emo if isinstance(emo, tuple) else ("neutral", 0.5)
 
-            emo = analyze_emotion(wav_path)
-            label, score = emo if isinstance(emo, tuple) else (str(emo), 0.8)
+        combined.append(f"Q{q_idx+1}: {q_text}\n{transcript}")
+        per_q.append({
+            "questionIndex": q_idx,
+            "question": q_text,
+            "transcript": transcript,
+            "skipped": False,
+            "duration": duration,
+            "emotion": {"label": label, "confidence": score},
+        })
 
-            combined_lines.append(f"Q{q_idx + 1}: {q_text}\n{transcript}")
-            per_q.append({
-                "questionIndex": q_idx,
-                "question": q_text,
-                "skipped": False,
-                "transcript": transcript,
-                "emotion": {"label": label, "confidence": float(score)},
-                "duration": duration
-            })
-        finally:
-            if os.path.exists(wav_path):
-                try:
-                    os.remove(wav_path)
-                except Exception:
-                    pass
+    transcript_text = "\n\n".join(combined)
 
-    merged = "\n\n".join(combined_lines).strip()
     model = _get_model()
-    summary_json = None
+    summary_json = {}
 
-    if model:
-        summary_prompt = f"""
-You are an AI interview coach. Analyze this full mock interview transcript.
-Some questions may be marked [SKIPPED] — ignore those when scoring.
-
-Return JSON ONLY that matches this schema exactly:
-
-{{
-  "overallScore": 0-100,
-  "grade": "string",
-  "performanceLevel": "string",
-  "aiConfidence": 0-100,
-  "speechQuality": 0-100,
-  "keyStrengths": ["string"],
-  "areasForImprovement": ["string"],
-  "performanceBreakdown": [
-    {{"category":"string","score":0-100,"summary":"string","suggestions":["string"]}}
-  ],
-  "immediateActionItems": ["string"],
-  "longTermDevelopment": ["string"],
-  "summary": "string"
-}}
-
-Guidelines:
-- Be concise, specific, and encouraging. Avoid repetition.
-- Use STAR-method advice when relevant.
-- Keep each suggestion under 15 words.
-- Ensure valid JSON (no markdown, no comments).
-- Grade: A (85-100), B+ (70-84), B (60-69), C (50-59), D (below 50)
-- Performance levels: "Exceptional", "Strong", "Competent", "Developing", "Needs Improvement"
-- Include 3-5 items in each array field
-- PerformanceBreakdown should cover: Communication, Technical Knowledge, Problem-Solving, Professionalism
-
-Transcript:
-\"\"\"{merged[:18000]}\"\"\"
-""".strip()
-
+    # --- ⬇️ CORRECTED PROMPT BLOCK ⬇️ ---
+    if not model:
+        print("‼️ ERROR: Gemini model could not be initialized. Check API key and configuration.")
+        summary_json = {"error": "AI model unavailable"}
+    else:
         try:
-            out = model.generate_content(summary_prompt)
+            # This is the correct prompt that uses your transcript
+            prompt = f"""
+            You are an AI interview coach. Analyze this full mock interview transcript.
+            Some questions may be marked [SKIPPED] — ignore those when scoring.
+
+            Transcript:
+            \"\"\"{transcript_text[:18000]}\"\"\" 
+
+            Return ONLY valid JSON with this schema:
+            {{
+              "overallScore": 0-100,
+              "summary": "string",
+              "strengths": ["string"],
+              "weaknesses": ["string"],
+              "recommendedImprovements": ["string"]
+            }}
+            """.strip()
+            
+            # --- We print it just to be safe ---
+            print("--- DEBUG: Sending this text to Gemini ---")
+            print(prompt)
+            print("------------------------------------------")
+
+            out = model.generate_content(prompt)
             raw_text = (out.text or "").strip()
+
+            print(f"--- DEBUG: Received this raw text from Gemini ---")
+            print(raw_text)
+            print(f"-------------------------------------------------")
+
             if raw_text.startswith("```"):
                 raw_text = raw_text.strip("`")
                 raw_text = raw_text.split("\n", 1)[-1].strip()
-            summary_json = json.loads(raw_text)
-        except Exception as e:
-            print("Summary generation failed:", e)
-            summary_json = None
 
-    # Save summary + mark complete
+            summary_json = json.loads(raw_text)
+
+        except Exception as e:
+            # --- This will now print the real error ---
+            print(f"‼️‼️ SUMMARY GENERATION FAILED ‼️‼️")
+            print(f"Error: {e}")
+            print(f"‼️‼️ END OF ERROR ‼️‼️")
+            summary_json = {"error": "Failed to generate AI summary."}
+    
+    # --- ⬆️ END OF CORRECTION ⬆️ ---
+
     session_ref.update({
         "complete": True,
         "completedAt": datetime.utcnow(),
@@ -295,9 +250,4 @@ Transcript:
         "perQuestion": per_q
     })
 
-    # Always return valid JSON
-    return JSONResponse(content={
-        "status": "completed",
-        "summary": summary_json or {},
-        "perQuestion": per_q
-    })
+    return {"status": "completed", "summary": summary_json, "perQuestion": per_q}

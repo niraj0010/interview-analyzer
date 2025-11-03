@@ -17,6 +17,7 @@ import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { useLocation, useNavigate } from "react-router-dom";
+import { getAuth } from "firebase/auth";
 
 type Phase =
   | "FETCHING_QUESTIONS"
@@ -32,8 +33,17 @@ export default function PracticeSession() {
   const role = location?.state?.role ?? "Software Developer";
   const MAX = 8;
 
-  // Replace Firebase uid logic with a simple unique placeholder for now
-  const [uid] = useState(() => crypto.randomUUID());
+  // --- ✅ Firebase Auth ---
+  const auth = getAuth();
+  const [uid, setUid] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((user) => {
+      if (user) setUid(user.uid);
+      else navigate("/login");
+    });
+    return () => unsub();
+  }, [auth, navigate]);
 
   const [sessionId, setSessionId] = useState("");
   const [questions, setQuestions] = useState<string[]>([]);
@@ -50,8 +60,10 @@ export default function PracticeSession() {
   const question = questions[index] ?? "";
   const progress = ((index + 1) / MAX) * 100;
 
-  // Fetch questions & sessionId from backend
+  // --- ✅ Fetch Questions only when UID exists ---
   useEffect(() => {
+    if (!uid) return;
+
     (async () => {
       try {
         const res = await fetch(
@@ -135,9 +147,11 @@ export default function PracticeSession() {
     else skip();
   };
 
-  // Upload audio to backend
+  // --- ✅ Submit Answer ---
   const submitAnswer = async () => {
+    if (!uid) return;
     setPhase("PROCESSING_ANSWER");
+
     try {
       const fd = new FormData();
       fd.append("sessionId", sessionId);
@@ -164,9 +178,11 @@ export default function PracticeSession() {
     }
   };
 
-  // Skip question
+  // --- ✅ Skip ---
   const skip = async () => {
+    if (!uid) return;
     setPhase("PROCESSING_ANSWER");
+
     try {
       const fd = new FormData();
       fd.append("sessionId", sessionId);
@@ -193,18 +209,20 @@ export default function PracticeSession() {
     }
   };
 
- const next = () => {
-  stopTimer();
-  setBlob(null);
-  setPhase("IDLE");  // ✅ Always reset to IDLE
-  if (index + 1 < MAX) {
-    setIndex((i) => i + 1);
-  }
-};
+  const next = () => {
+    stopTimer();
+    setBlob(null);
+    setPhase("IDLE");
+    if (index + 1 < MAX) {
+      setIndex((i) => i + 1);
+    }
+  };
 
-  // Final summary — handled by backend Firestore update
+  // --- ✅ Finish session ---
   const finish = async () => {
+    if (!uid) return;
     setPhase("FINALIZING");
+
     try {
       const fd = new FormData();
       fd.append("sessionId", sessionId);
@@ -217,10 +235,17 @@ export default function PracticeSession() {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
 
-      navigate("/summary", {
-        state: { summary: data.summary, role, sessionId, uid },
+      
+      navigate("/feedback", {
+        state: {
+          userId: uid,           // Renamed 'uid' to 'userId'
+          interviewId: sessionId,  // Renamed 'sessionId' to 'interviewId'
+          source: "practice",      // Added the 'source' flag
+          role: role,
+        },
       });
     } catch (e) {
+// ... {
       console.error(e);
       alert("Failed to compile your interview feedback. Please retry.");
       setPhase("IDLE");
@@ -234,7 +259,7 @@ export default function PracticeSession() {
 
   return (
     <Box sx={{ minHeight: "100vh", p: 4, bgcolor: "#0b1220", color: "#e2e8f0" }}>
-      {isReady && (
+      {isReady && uid && (
         <>
           <Paper sx={{ p: 2, mb: 3, bgcolor: "#132030", borderRadius: "12px" }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
