@@ -11,16 +11,37 @@ import {
   Card,
   CardContent,
 } from "@mui/material";
-import { useNavigate } from "react-router-dom"; 
+import { useNavigate } from "react-router-dom";
+import { getAuth } from "firebase/auth";
 
 const PracticePage: React.FC = () => {
   const [role, setRole] = useState("");
-  const navigate = useNavigate(); // ✅ added
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const handleStart = () => {
-    if (role) {
-      navigate("/practice-session", { state: { role } }); 
+  const handleStart = async () => {
+    if (!role) return;
+    const user = getAuth().currentUser;
+
+    if (!user) {
+      alert("Please sign in first.");
+      return;
     }
+
+    setLoading(true);
+
+    const res = await fetch(
+      `http://localhost:8000/practice/start?role=${role}&uid=${user.uid}`
+    );
+    const data = await res.json();
+
+    navigate("/practice-session", {
+      state: {
+        role,
+        sessionId: data.sessionId,
+        questions: data.questions,
+      },
+    });
   };
 
   return (
@@ -36,7 +57,6 @@ const PracticePage: React.FC = () => {
         alignItems: "center",
       }}
     >
-      {/* Header Section */}
       <Box display="flex" alignItems="center" gap={2} mb={2}>
         <Mic size={36} color="#14b8a6" />
         <Typography
@@ -59,7 +79,6 @@ const PracticePage: React.FC = () => {
         Simulate real interviews and get instant AI-powered feedback tailored to your selected role.
       </Typography>
 
-      {/* Choose Role Section */}
       <Card
         sx={{
           background: "rgba(30,41,59,0.8)",
@@ -76,43 +95,28 @@ const PracticePage: React.FC = () => {
           <Typography variant="h6" fontWeight={600} mb={2}>
             Choose Your Practice Role
           </Typography>
-          <Typography variant="body2" color="#94a3b8" mb={3}>
-            Select the position you want to practice for, and our AI will generate dynamic,
-            tailored interview questions.
-          </Typography>
 
           <Box display="flex" alignItems="center" gap={2}>
-            <FormControl
-              fullWidth
-              sx={{
-                background: "#1e293b",
-                borderRadius: "10px",
-                "& .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "rgba(255,255,255,0.1)",
-                },
-                "&:hover .MuiOutlinedInput-notchedOutline": {
-                  borderColor: "#14b8a6",
-                },
-              }}
-            >
+            <FormControl fullWidth>
               <InputLabel sx={{ color: "#94a3b8" }}>Choose a role</InputLabel>
               <Select
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
                 label="Choose a role"
-                sx={{ color: "#f1f5f9" }}
+                onChange={(e) => setRole(e.target.value)}
+                sx={{ color: "#f8fafc" }}
               >
                 <MenuItem value="Software Engineer">Software Engineer</MenuItem>
                 <MenuItem value="Data Analyst">Data Analyst</MenuItem>
                 <MenuItem value="Project Manager">Project Manager</MenuItem>
-                
+                <MenuItem value="Cloud Engineer">Cloud Engineer</MenuItem>
+                <MenuItem value="Product Manager">Product Manager</MenuItem>
               </Select>
             </FormControl>
 
             <Button
               variant="contained"
+              disabled={!role || loading}
               onClick={handleStart}
-              disabled={!role}
               sx={{
                 background: "#14b8a6",
                 fontWeight: 600,
@@ -120,81 +124,13 @@ const PracticePage: React.FC = () => {
                 borderRadius: "10px",
                 px: 3,
                 py: 1.2,
-                boxShadow: "0 0 10px rgba(20,184,166,0.6)",
-                "&:hover": {
-                  background: "#0d9488",
-                  boxShadow: "0 0 14px rgba(20,184,166,0.8)",
-                },
               }}
             >
-              Start Practice
+              {loading ? "Generating..." : "Start Practice"}
             </Button>
           </Box>
         </CardContent>
       </Card>
-
-      {/* Info Cards Section */}
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" },
-          gap: 4,
-          maxWidth: "1100px",
-          width: "100%",
-        }}
-      >
-        {[
-          {
-            title: "AI-Generated Questions",
-            desc: "Dynamic questions tailored to your selected role and experience level.",
-          },
-          {
-            title: "Voice Recording",
-            desc: "Record your responses with real-time feedback and replay options.",
-          },
-          {
-            title: "Instant Analysis",
-            desc: "Get comprehensive feedback on tone, content, and confidence instantly.",
-          },
-        ].map((item, i) => (
-          <Card
-            key={i}
-            sx={{
-              background: "rgba(30,41,59,0.85)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "20px",
-              boxShadow: "0 0 15px rgba(20,184,166,0.15)",
-              p: 2,
-              transition: "transform 0.3s ease, box-shadow 0.3s ease",
-              "&:hover": {
-                transform: "translateY(-6px)",
-                boxShadow: "0 0 25px rgba(20,184,166,0.4)",
-              },
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6" color="#14b8a6" fontWeight={600}>
-                {item.title}
-              </Typography>
-              <Typography variant="body2" color="#cbd5e1" mt={1.5}>
-                {item.desc}
-              </Typography>
-            </CardContent>
-          </Card>
-        ))}
-      </Box>
-
-      {/* Session Info */}
-      <Typography
-        variant="body2"
-        color="#94a3b8"
-        textAlign="center"
-        maxWidth="800px"
-        mt={6}
-      >
-        Each session includes eight role-specific questions. Take your time to respond thoughtfully.
-        Our AI will analyze your communication, clarity, and confidence.
-      </Typography>
     </Box>
   );
 };

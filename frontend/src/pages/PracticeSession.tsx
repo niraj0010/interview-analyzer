@@ -1,195 +1,415 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  Backdrop,
   Box,
-  Typography,
   Button,
+  Chip,
+  CircularProgress,
   LinearProgress,
-  Card,
-  CardContent,
+  Paper,
+  Stack,
+  Typography,
+  IconButton,
 } from "@mui/material";
-import { Mic } from "lucide-react";
+import MicIcon from "@mui/icons-material/Mic";
+import StopIcon from "@mui/icons-material/Stop";
+import NavigateNextIcon from "@mui/icons-material/NavigateNext";
+import DoneAllIcon from "@mui/icons-material/DoneAll";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { useLocation, useNavigate } from "react-router-dom";
+import { getAuth } from "firebase/auth";
 
-const PracticeSession: React.FC = () => {
+type Phase =
+  | "FETCHING_QUESTIONS"
+  | "IDLE"
+  | "RECORDING"
+  | "PROCESSING_ANSWER"
+  | "FINALIZING";
+
+export default function PracticeSession() {
+  const location = useLocation() as any;
   const navigate = useNavigate();
-  const location = useLocation();
-  const role = location.state?.role || "Software Engineer";
 
-  const [currentQuestion, setCurrentQuestion] = useState(1);
-  const totalQuestions = 8;
-  const [isRecording, setIsRecording] = useState(false);
+  const role = location?.state?.role ?? "Software Developer";
+  const MAX = 8;
 
-  const progress = ((currentQuestion - 1) / totalQuestions) * 100;
+  // --- ✅ Firebase Auth ---
+  const auth = getAuth();
+  const [uid, setUid] = useState<string | null>(null);
 
-  const questions = [
-    `Tell me about yourself and your background in ${role.toLowerCase()}.`,
-    "Describe a challenge you faced and how you overcame it.",
-    "What motivates you to work in this field?",
-    "Tell me about a project you are most proud of.",
-    "How do you handle tight deadlines or pressure?",
-    "What are your strengths and weaknesses?",
-    "How do you stay updated with the latest trends?",
-    "Why should we hire you for this role?",
-  ];
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((user) => {
+      if (user) setUid(user.uid);
+      else navigate("/login");
+    });
+    return () => unsub();
+  }, [auth, navigate]);
 
-  const handleNext = () => {
-    if (currentQuestion < totalQuestions) {
-      setCurrentQuestion(currentQuestion + 1);
-    } else {
-      navigate("/analysis", { state: { role } });
+  const [sessionId, setSessionId] = useState("");
+  const [questions, setQuestions] = useState<string[]>([]);
+  const [index, setIndex] = useState(0);
+  const [phase, setPhase] = useState<Phase>("FETCHING_QUESTIONS");
+  const [timer, setTimer] = useState(0);
+  const [blob, setBlob] = useState<Blob | null>(null);
+  const [recorded, setRecorded] = useState<boolean[]>(Array(MAX).fill(false));
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const intervalRef = useRef<number | null>(null);
+
+  const question = questions[index] ?? "";
+  const progress = ((index + 1) / MAX) * 100;
+
+  // --- ✅ Fetch Questions only when UID exists ---
+  useEffect(() => {
+    if (!uid) return;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `http://127.0.0.1:8000/practice/start?role=${encodeURIComponent(
+            role
+          )}&uid=${uid}`
+        );
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+
+        let qs = data?.questions ?? [];
+        qs = qs.slice(0, MAX);
+        while (qs.length < MAX) qs.push("Describe a recent challenge.");
+
+        setSessionId(data.sessionId);
+        setQuestions(qs);
+        setPhase("IDLE");
+      } catch (e) {
+        console.error(e);
+        alert("Failed to start practice. Please try again.");
+        navigate(-1);
+      }
+    })();
+  }, [role, uid, navigate]);
+
+  // Timer helpers
+  const startTimer = () => {
+    stopTimer();
+    setTimer(0);
+    intervalRef.current = window.setInterval(
+      () => setTimer((t) => t + 1),
+      1000
+    ) as unknown as number;
+  };
+  const stopTimer = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
   };
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
+  // Recording controls
+  const startRecording = async () => {
+    try {
+      setBlob(null);
+      const arr = [...recorded];
+      arr[index] = false;
+      setRecorded(arr);
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const r = new MediaRecorder(stream);
+      chunksRef.current = [];
+
+      r.ondataavailable = (e) => {
+        if (e.data.size) chunksRef.current.push(e.data);
+      };
+      r.onstop = () => {
+        const b = new Blob(chunksRef.current, { type: "audio/webm" });
+        setBlob(b);
+        stream.getTracks().forEach((t) => t.stop());
+      };
+
+      mediaRecorderRef.current = r;
+      r.start();
+      startTimer();
+      setPhase("RECORDING");
+    } catch (e) {
+      console.error(e);
+      alert("Microphone permission is required to record.");
+    }
   };
 
+  const stopRecording = () => {
+    stopTimer();
+    mediaRecorderRef.current?.stop();
+    setPhase("IDLE");
+  };
+
+  const handleNextQuestion = () => {
+    if (blob) submitAnswer();
+    else skip();
+  };
+
+  // --- ✅ Submit Answer ---
+  const submitAnswer = async () => {
+    if (!uid) return;
+    setPhase("PROCESSING_ANSWER");
+
+    try {
+      const fd = new FormData();
+      fd.append("sessionId", sessionId);
+      fd.append("uid", uid);
+      fd.append("questionIndex", String(index));
+      fd.append("question", question);
+      fd.append("skipped", "false");
+      if (blob) fd.append("file", blob, `q${index + 1}.webm`);
+
+      const res = await fetch("http://127.0.0.1:8000/practice/answer", {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      const arr = [...recorded];
+      arr[index] = true;
+      setRecorded(arr);
+      next();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to upload your answer. Please try again.");
+      setPhase("IDLE");
+    }
+  };
+
+  // --- ✅ Skip ---
+  const skip = async () => {
+    if (!uid) return;
+    setPhase("PROCESSING_ANSWER");
+
+    try {
+      const fd = new FormData();
+      fd.append("sessionId", sessionId);
+      fd.append("uid", uid);
+      fd.append("questionIndex", String(index));
+      fd.append("question", question);
+      fd.append("skipped", "true");
+
+      const res = await fetch("http://127.0.0.1:8000/practice/answer", {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      const arr = [...recorded];
+      arr[index] = false;
+      setRecorded(arr);
+      setBlob(null);
+      next();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to skip. Please try again.");
+      setPhase("IDLE");
+    }
+  };
+
+  const next = () => {
+    stopTimer();
+    setBlob(null);
+    setPhase("IDLE");
+    if (index + 1 < MAX) {
+      setIndex((i) => i + 1);
+    }
+  };
+
+  // --- ✅ Finish session ---
+  const finish = async () => {
+    if (!uid) return;
+    setPhase("FINALIZING");
+
+    try {
+      const fd = new FormData();
+      fd.append("sessionId", sessionId);
+      fd.append("uid", uid);
+
+      const res = await fetch("http://127.0.0.1:8000/practice/finish", {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+
+      
+      navigate("/feedback", {
+        state: {
+          userId: uid,           // Renamed 'uid' to 'userId'
+          interviewId: sessionId,  // Renamed 'sessionId' to 'interviewId'
+          source: "practice",      // Added the 'source' flag
+          role: role,
+        },
+      });
+    } catch (e) {
+// ... {
+      console.error(e);
+      alert("Failed to compile your interview feedback. Please retry.");
+      setPhase("IDLE");
+    }
+  };
+
+  const isLast = index === MAX - 1;
+  const canInteract = phase === "IDLE" || phase === "RECORDING";
+  const disableActions = !canInteract || !question;
+  const isReady = phase !== "FETCHING_QUESTIONS";
+
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        py: 8,
-        px: 3,
-      }}
-    >
-      {/* Progress Bar */}
-      <Card
-        sx={{
-          width: "100%",
-          maxWidth: "800px",
-          mb: 4,
-          background: "rgba(30,41,59,0.85)",
-          borderRadius: "16px",
-          border: "1px solid rgba(255,255,255,0.1)",
-          color: "#f8fafc",
-        }}
-      >
-        <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-            <Typography fontWeight={600}>
-              Question {currentQuestion} of {totalQuestions}
-            </Typography>
-            <Typography
-              sx={{
-                border: "1px solid #14b8a6",
-                px: 1.5,
-                py: 0.3,
-                borderRadius: "8px",
-                color: "#14b8a6",
-                fontSize: "0.8rem",
-              }}
-            >
-              {Math.round(progress)}% Complete
-            </Typography>
-          </Box>
-          <LinearProgress
-            variant="determinate"
-            value={progress}
-            sx={{
-              height: 8,
-              borderRadius: 5,
-              background: "rgba(255,255,255,0.08)",
-              "& .MuiLinearProgress-bar": {
-                background: "#14b8a6",
-              },
-            }}
-          />
-        </CardContent>
-      </Card>
+    <Box sx={{ minHeight: "100vh", p: 4, bgcolor: "#0b1220", color: "#e2e8f0" }}>
+      {isReady && uid && (
+        <>
+          <Paper sx={{ p: 2, mb: 3, bgcolor: "#132030", borderRadius: "12px" }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="h6">
+                  Question {Math.min(index + 1, MAX)} of {MAX}
+                </Typography>
+                <Typography fontSize={13} opacity={0.6}>
+                  Role: {role}
+                </Typography>
+              </Box>
+              <Chip
+                label={`${Math.round(((index + 1) / MAX) * 100)}% Complete`}
+                size="small"
+                sx={{ bgcolor: "#0d9488", color: "white" }}
+              />
+            </Stack>
+            <LinearProgress variant="determinate" value={progress} sx={{ mt: 2, borderRadius: 5 }} />
+          </Paper>
 
-      {/* Question Section */}
-      <Card
-        sx={{
-          width: "100%",
-          maxWidth: "800px",
-          background: "rgba(30,41,59,0.9)",
-          borderRadius: "20px",
-          border: "1px solid rgba(255,255,255,0.1)",
-          color: "#f1f5f9",
-          textAlign: "center",
-          py: 6,
-          px: 4,
-          boxShadow: "0 0 20px rgba(20,184,166,0.15)",
-        }}
-      >
-        <Typography variant="h6" mb={4}>
-          {questions[currentQuestion - 1]}
-        </Typography>
-
-        {/* Mic Button */}
-        <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
-          <Box
-            onClick={toggleRecording}
+          <Paper
             sx={{
-              width: 100,
-              height: 100,
-              background: isRecording ? "#dc2626" : "#14b8a6",
-              borderRadius: "50%",
+              p: 4,
+              bgcolor: "#1e293b",
+              borderRadius: "14px",
+              textAlign: "center",
+              minHeight: "50vh",
               display: "flex",
-              alignItems: "center",
+              flexDirection: "column",
               justifyContent: "center",
-              boxShadow: isRecording
-                ? "0 0 30px rgba(220,38,38,0.5)"
-                : "0 0 30px rgba(20,184,166,0.4)",
-              cursor: "pointer",
-              transition: "all 0.3s ease",
+              alignItems: "center",
             }}
           >
-            <Mic size={40} color="#fff" />
-          </Box>
-          <Typography fontWeight={600}>
-            {isRecording ? "Recording..." : "Start Recording"}
-          </Typography>
-        </Box>
+            <Typography variant="h5" sx={{ mb: 4, fontWeight: 600, minHeight: "3em" }}>
+              {question}
+            </Typography>
 
-        {/* Next Button */}
-        <Button
-          variant="contained"
-          onClick={handleNext}
-          sx={{
-            mt: 5,
-            background: "#14b8a6",
-            fontWeight: 600,
-            textTransform: "none",
-            borderRadius: "10px",
-            px: 3,
-            py: 1.2,
-            boxShadow: "0 0 10px rgba(20,184,166,0.6)",
-            "&:hover": {
-              background: "#0d9488",
-              boxShadow: "0 0 14px rgba(20,184,166,0.8)",
-            },
-          }}
-        >
-          {currentQuestion < totalQuestions ? "Next Question →" : "Finish Practice"}
-        </Button>
+            <IconButton
+              onClick={phase === "RECORDING" ? stopRecording : startRecording}
+              disabled={disableActions}
+              sx={{
+                width: 120,
+                height: 120,
+                bgcolor: phase === "RECORDING" ? "#e63946" : "#14b8a6",
+                color: "white",
+                "&:hover": {
+                  bgcolor: phase === "RECORDING" ? "#c0303c" : "#11a090",
+                },
+                boxShadow: `0 0 20px ${
+                  phase === "RECORDING" ? "#e63946" : "#14b8a6"
+                }`,
+              }}
+            >
+              {phase === "RECORDING" ? (
+                <StopIcon sx={{ fontSize: 60 }} />
+              ) : (
+                <MicIcon sx={{ fontSize: 60 }} />
+              )}
+            </IconButton>
 
-        <Typography variant="body2" color="#94a3b8" mt={3}>
-          Take your time and speak clearly. You can re-record your answer if needed.
-        </Typography>
-      </Card>
+            <Typography sx={{ mt: 2, mb: 3, fontSize: "1.1rem" }}>
+              {phase === "RECORDING"
+                ? `Recording... ${new Date(timer * 1000).toISOString().substr(14, 5)}`
+                : "Start Recording"}
+            </Typography>
 
-      {/* Question Indicators */}
-      <Box display="flex" justifyContent="center" gap={2} mt={5}>
-        {[...Array(totalQuestions)].map((_, i) => (
-          <Box
-            key={i}
-            sx={{
-              width: 20,
-              height: 20,
-              borderRadius: "50%",
-              background: i + 1 === currentQuestion ? "#14b8a6" : "rgba(255,255,255,0.1)",
-              transition: "all 0.3s ease",
-            }}
-          />
-        ))}
-      </Box>
+            {phase === "IDLE" && !isLast && (
+              <Button
+                endIcon={<NavigateNextIcon />}
+                variant="contained"
+                onClick={handleNextQuestion}
+                disabled={disableActions}
+                sx={{ bgcolor: "#0d9488", "&:hover": { bgcolor: "#0a7066" } }}
+              >
+                {blob ? "Save & Next" : "Next Question (Skip)"}
+              </Button>
+            )}
+
+            {phase === "IDLE" && isLast && (
+              <Button
+                startIcon={<DoneAllIcon />}
+                variant="contained"
+                color="secondary"
+                onClick={finish}
+                disabled={disableActions}
+                sx={{ animation: "pulse 1.5s infinite" }}
+              >
+                Finish & Get Feedback
+              </Button>
+            )}
+
+            <Typography sx={{ mt: 3, opacity: 0.6, fontSize: "0.9rem" }}>
+              {phase === "IDLE" && recorded[index] ? "Answer Saved. " : ""}
+              Take your time and speak clearly. You can re-record if needed.
+            </Typography>
+          </Paper>
+
+          <Paper sx={{ p: 2, mt: 3, bgcolor: "#132030", borderRadius: "12px" }}>
+            <Stack direction="row" justifyContent="center" alignItems="center" spacing={2}>
+              {[...Array(MAX).keys()].map((i) => {
+                const isActive = i === index;
+                const isDone = recorded[i];
+                return (
+                  <Box
+                    key={i}
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: "50%",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      bgcolor: isActive ? "#14b8a6" : "#1e293b",
+                      border: isActive ? "2px solid #fff" : "2px solid transparent",
+                      color: isActive ? "white" : "#e2e8f0",
+                      fontWeight: isActive ? 700 : 400,
+                      transition: "all 0.3s ease",
+                      opacity: isDone || isActive ? 1 : 0.6,
+                    }}
+                  >
+                    {isDone ? <CheckCircleIcon sx={{ color: "#4ade80" }} /> : i + 1}
+                  </Box>
+                );
+              })}
+            </Stack>
+          </Paper>
+        </>
+      )}
+
+      {/* Loading Overlays */}
+      <Backdrop open={phase === "FETCHING_QUESTIONS"} sx={{ color: "#fff", zIndex: 9999 }}>
+        <Stack alignItems="center" spacing={2}>
+          <CircularProgress />
+          <Typography>Preparing your interview…</Typography>
+        </Stack>
+      </Backdrop>
+
+      <Backdrop open={phase === "PROCESSING_ANSWER"} sx={{ color: "#fff", zIndex: 9999 }}>
+        <Stack alignItems="center" spacing={2}>
+          <CircularProgress />
+          <Typography>Saving your answer…</Typography>
+        </Stack>
+      </Backdrop>
+
+      <Backdrop open={phase === "FINALIZING"} sx={{ color: "#fff", zIndex: 9999 }}>
+        <Stack alignItems="center" spacing={2}>
+          <CircularProgress />
+          <Typography>Compiling your interview feedback…</Typography>
+        </Stack>
+      </Backdrop>
     </Box>
   );
-};
-
-export default PracticeSession;
+}

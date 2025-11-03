@@ -1,59 +1,361 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
-import requests, os, ffmpeg
-from transformers import pipeline
+# routers/analyze.py
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+import os, json, tempfile, requests, ffmpeg, time, re
 from dotenv import load_dotenv
+from transformers import pipeline
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 load_dotenv()
-router = APIRouter()
+router = APIRouter()    
 
-# Setup Whisper and Emotion configs
+# ========= CONFIG =========
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+FIREBASE_CREDENTIALS = "firebase-service-account.json"
+
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY missing in environment")
+
 WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions"
-EMOTION_MODEL = pipeline("audio-classification", model="r-f/wav2vec-english-speech-emotion-recognition")
+
+# Emotion model (loaded once)
+EMOTION_MODEL = pipeline(
+    "audio-classification",
+    model="r-f/wav2vec-english-speech-emotion-recognition"
+)
+
+# ========= FIRESTORE INIT =========
+db = None
+abs_path = os.path.abspath(FIREBASE_CREDENTIALS)
+print(f"🧩 Checking Firestore credentials at: {abs_path}")
+
+if FIREBASE_CREDENTIALS and os.path.exists(abs_path):
+    try:
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(abs_path)
+            firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        print("✅ Firestore initialized successfully.")
+    except Exception as e:
+        print(f"❌ Firestore init failed: {e}")
+else:
+    print("⚠️ Firestore disabled — credentials file missing or incorrect path.")
 
 
-@router.post("/analyze")
-async def analyze_interview(file: UploadFile = File(...)):
+
+# ========= HELPERS =========
+def to_wav(src_path: str, dst_path: str):
+    """Convert any audio file to mono 16kHz WAV (for Whisper + wav2vec)."""
+    (
+        ffmpeg
+        .input(src_path)
+        .output(dst_path, format="wav", ac=1, ar="16000")
+        .overwrite_output()
+        .run(quiet=True)
+    )
+
+def probe_duration(path: str) -> str:
+    """Return duration as mm:ss string."""
+    try:
+        info = ffmpeg.probe(path)
+        sec = float(info["format"]["duration"])
+        m, s = divmod(int(round(sec)), 60)
+        return f"{m:02d}:{s:02d}"
+    except Exception:
+        return ""
+
+def whisper_transcribe(wav_path: str) -> str:
+    """Send WAV to Whisper API for transcription."""
+    with open(wav_path, "rb") as audio_file:
+        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+        data = {"model": "whisper-1"}
+        r = requests.post(WHISPER_URL, headers=headers, data=data, files={"file": audio_file})
+    if r.status_code != 200:
+        raise HTTPException(status_code=r.status_code, detail=r.text)
+    return r.json().get("text", "")
+
+def detect_emotion(wav_path: str):
+    """Detect dominant emotion using wav2vec model."""
+    res = EMOTION_MODEL(wav_path)
+    res = sorted(res, key=lambda x: x["score"], reverse=True)
+    top = res[0]
+    return top["label"], float(top["score"]), res
+
+
+
+# ========= GEMINI REST CALL (FIXED) =========
+def gemini_generate(prompt: str, model: str = None) -> str:
+    """Use REST API for Gemini (AI Studio key format)."""
+    if not GOOGLE_API_KEY:
+        print("  GOOGLE_API_KEY missing — Gemini skipped.")
+        return None
+
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-flash-latest",
+        "gemini-2.5-flash-lite",
+        "gemini-pro-latest"
+    ]
+    
+    if model:
+        models_to_try = [model] + [m for m in models_to_try if m != model]
+
+    last_error = None
+    
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GOOGLE_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+        try:
+            print(f" Trying Gemini model: {model_name}")
+            resp = requests.post(url, headers=headers, json=payload, timeout=60)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                print(f" Success with model: {model_name}")
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            elif resp.status_code == 404:
+                print(f"  Model {model_name} not found, trying next...")
+                last_error = f"Model {model_name} not found"
+                continue
+            else:
+                print(f" Gemini REST Error {resp.status_code}: {resp.text}")
+                last_error = f"Error {resp.status_code}: {resp.text}"
+                continue
+                
+        except requests.exceptions.RequestException as e:
+            print(f" Request failed for {model_name}: {e}")
+            last_error = str(e)
+            continue
+    
+    raise HTTPException(status_code=500, detail=f"All Gemini models failed. Last error: {last_error}")
+
+
+
+# ========= MODEL LISTING =========
+def list_available_models():
+    if not GOOGLE_API_KEY:
+        return []
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GOOGLE_API_KEY}"
+    try:
+        resp = requests.get(url, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            models = data.get("models", [])
+            available = []
+            for m in models:
+                name = m.get("name", "").replace("models/", "")
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    available.append(name)
+            return available
+        else:
+            print(f" Failed to list models: {resp.text}")
+            return []
+    except Exception as e:
+        print(f" Error listing models: {e}")
+        return []
+
+
+
+# ========= PROMPT TEMPLATE =========
+PROMPT_TEMPLATE = """
+You are an AI interview coach. Return JSON ONLY that matches this schema exactly:
+
+{
+  "fileName": "string",
+  "duration": "string (mm:ss)",
+  "overallScore": 0-100,
+  "grade": "string",
+  "performanceLevel": "string",
+  "aiConfidence": 0-100,
+  "speechQuality": 0-100,
+  "keyStrengths": ["string"],
+  "areasForImprovement": ["string"],
+  "performanceBreakdown": [
+    {"category":"string","score":0-100,"summary":"string","suggestions":["string"]}
+  ],
+  "immediateActionItems": ["string"],
+  "longTermDevelopment": ["string"]
+}
+
+Guidelines:
+- Be concise, specific, and encouraging. Avoid repetition.
+- Use STAR-method advice when relevant.
+- Keep each suggestion under 15 words.
+- Ensure valid JSON (no markdown, no comments).
+"""
+
+
+
+# ========= GEMINI HANDLER =========
+def gemini_feedback_json(transcript: str, emotion: str, conf: float, file_name: str, duration: str):
+    if not GOOGLE_API_KEY:
+        print(" Gemini feedback skipped (no API key).")
+        return None
+
+    prompt = f"""
+    {PROMPT_TEMPLATE}
+
+    DetectedEmotion: {emotion} (confidence {conf:.2f})
+
+    Transcript:
+    \"\"\"{transcript[:8000]}\"\"\"
     """
-    Upload → Transcribe → Emotion Detection (Single endpoint)
+
+    print("ℹ Calling Gemini via REST...")
+    text = gemini_generate(prompt)
+    if not text:
+        raise HTTPException(status_code=500, detail="Empty response from Gemini REST API.")
+
+    def _extract_and_parse_json(raw_text: str) -> dict:
+        match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON found in Gemini response.")
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError as e:
+            print(f" JSON parse failed: {e}")
+            raise e
+
+    try:
+        data = _extract_and_parse_json(text)
+    except Exception:
+        print(" Gemini JSON invalid. Retrying to enforce JSON format...")
+        reformat_prompt = f"Reformat the following into valid JSON ONLY (no explanation):\n\n{text}"
+        fixed_text = gemini_generate(reformat_prompt)
+        data = _extract_and_parse_json(fixed_text)
+
+    data["fileName"] = file_name
+    data["duration"] = duration
+    return data
+
+
+
+def save_report(uid: str, payload: dict):
+    if not db:
+        return None
+    ref = (
+        db.collection("users")
+        .document(uid)
+        .collection("interviews")
+        .add({**payload, "createdAt": firestore.SERVER_TIMESTAMP})
+    )
+    return ref[1].id
+
+
+
+# ========= DEBUG ROUTE =========
+@router.get("/debug/models")
+async def debug_models():
+    models = list_available_models()
+    return {
+        "available_models": models,
+        "has_api_key": bool(GOOGLE_API_KEY),
+        "recommended": "gemini-1.5-flash-latest or gemini-pro"
+    }
+
+
+
+# ========= MAIN ANALYZE ROUTE =========
+@router.post("/analyze")
+async def analyze_interview(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    user_id: str = Form(default="demo-user")
+):
+    """
+    Upload → Convert → Whisper → Emotion → Gemini → Firestore
+    Returns structured JSON for UI + live Firestore updates.
     """
     try:
         os.makedirs("uploads", exist_ok=True)
-        temp_path = f"uploads/{file.filename}"
-        wav_path = temp_path.rsplit(".", 1)[0] + ".wav"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as tmp:
+            raw_path = tmp.name
+            tmp.write(await file.read())
+        wav_path = raw_path + ".wav"
 
-        # Save uploaded file locally
-        with open(temp_path, "wb") as f:
-            f.write(await file.read())
+        # 🔥 Create Firestore doc early for live updates
+        if not db:
+            raise HTTPException(status_code=500, detail="Firestore not initialized.")
+        user_ref = db.collection("users").document(user_id)
+        interview_ref = user_ref.collection("interviews").document()
+        interview_ref.set({
+            "fileName": file.filename,
+            "status": "uploading",
+            "createdAt": firestore.SERVER_TIMESTAMP
+        })
+        interview_id = interview_ref.id
+        print(f"📄 Firestore doc created: {interview_id}")
 
-        # Convert to wav if not already
-        ffmpeg.input(temp_path).output(wav_path, format="wav", ac=1, ar="16000").run(quiet=True, overwrite_output=True)
+        # Convert + duration
+        to_wav(raw_path, wav_path)
+        duration = probe_duration(raw_path) or probe_duration(wav_path)
 
-        # === STEP 1: Transcription ===
-        with open(wav_path, "rb") as audio_file:
-            headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
-            data = {"model": "whisper-1"}
-            whisper_response = requests.post(WHISPER_URL, headers=headers, data=data, files={"file": audio_file})
+        interview_ref.update({"status": "processing", "duration": duration})
 
-        if whisper_response.status_code != 200:
-            raise HTTPException(status_code=whisper_response.status_code, detail=whisper_response.text)
-        transcript = whisper_response.json().get("text", "Transcription failed")
+        # 1️⃣ Transcription
+        t0 = time.time()
+        transcript = whisper_transcribe(wav_path)
+        interview_ref.update({
+            "status": "transcribed",
+            "transcript": transcript[:5000]
+        })
+        print(f"Whisper: {time.time()-t0:.2f}s")
 
-        # === STEP 2: Emotion Detection ===
-        emotions = EMOTION_MODEL(wav_path)
-        dominant_emotion = emotions[0]["label"]
-        confidence = round(emotions[0]["score"], 3)
+        # 2️⃣ Emotion
+        t0 = time.time()
+        dominant_emotion, confidence, all_emotions = detect_emotion(wav_path)
+        interview_ref.update({
+            "status": "emotion_detected",
+            "dominantEmotion": dominant_emotion,
+            "emotionConfidence": round(confidence, 3),
+            "allEmotions": all_emotions
+        })
+        print(f"Emotion: {time.time()-t0:.2f}s")
+
+        # 3️⃣ Gemini feedback
+        t0 = time.time()
+        feedback = gemini_feedback_json(transcript, dominant_emotion, confidence, file.filename, duration)
+        print(f"Gemini: {time.time()-t0:.2f}s")
+
+        # 🔥 Final Firestore update
+        final_result = {
+            "status": "completed",
+            "fileName": file.filename,
+            "duration": duration,
+            "transcript": transcript,
+            "dominantEmotion": dominant_emotion,
+            "emotionConfidence": round(confidence, 3),
+            "allEmotions": all_emotions,
+            "feedback": feedback,
+        }
+        interview_ref.update(final_result)
+        print("✅ Firestore updated with final data.")
 
         # Cleanup
-        os.remove(temp_path)
-        os.remove(wav_path)
+        def _cleanup():
+            for p in (raw_path, wav_path):
+                try:
+                    if os.path.exists(p):
+                        os.remove(p)
+                except Exception:
+                    pass
+        background.add_task(_cleanup)
 
         return {
-            "transcript": transcript,
-            "dominant_emotion": dominant_emotion,
-            "confidence": confidence,
-            "all_emotions": emotions
+            "message": "success",
+            "interviewId": interview_id,
+            "userId": user_id,
+            "status": "completed"
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"❌ UNHANDLED EXCEPTION in /analyze: {e}")
         raise HTTPException(status_code=500, detail=str(e))
