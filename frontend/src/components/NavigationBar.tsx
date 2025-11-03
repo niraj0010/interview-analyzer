@@ -45,7 +45,7 @@ export const NavigationBar: React.FC = () => {
           <Brain size={28} color="#14b8a6" />
           <Box
             sx={{ cursor: "pointer" }}
-            onClick={() => navigate("/landing")}
+            onClick={() => navigate("/upload")}
           >
             <Typography
               variant="h6"
