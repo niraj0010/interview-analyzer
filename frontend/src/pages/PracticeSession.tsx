@@ -33,7 +33,7 @@ export default function PracticeSession() {
   const role = location?.state?.role ?? "Software Developer";
   const MAX = 8;
 
-  // --- ✅ Firebase Auth ---
+  // ---  Firebase Auth ---
   const auth = getAuth();
   const [uid, setUid] = useState<string | null>(null);
 
@@ -60,7 +60,7 @@ export default function PracticeSession() {
   const question = questions[index] ?? "";
   const progress = ((index + 1) / MAX) * 100;
 
-  // --- ✅ Fetch Questions only when UID exists ---
+  // ---  Fetch Questions only when UID exists ---
   useEffect(() => {
     if (!uid) return;
 
@@ -147,7 +147,7 @@ export default function PracticeSession() {
     else skip();
   };
 
-  // --- ✅ Submit Answer ---
+  // ---  Submit Answer ---
   const submitAnswer = async () => {
     if (!uid) return;
     setPhase("PROCESSING_ANSWER");
@@ -178,7 +178,7 @@ export default function PracticeSession() {
     }
   };
 
-  // --- ✅ Skip ---
+  // ---  Skip ---
   const skip = async () => {
     if (!uid) return;
     setPhase("PROCESSING_ANSWER");
@@ -218,7 +218,7 @@ export default function PracticeSession() {
     }
   };
 
-  // --- ✅ Finish session ---
+  // ---  Finish session ---
   const finish = async () => {
     if (!uid) return;
     setPhase("FINALIZING");
