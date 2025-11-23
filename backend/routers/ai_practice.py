@@ -312,7 +312,7 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
     summary_json = {}
 
     if not model:
-        print("‼️ ERROR: Gemini model could not be initialized. Check API key and configuration.")
+        print("‼ ERROR: Gemini model could not be initialized. Check API key and configuration.")
         summary_json = {"error": "AI model unavailable"}
     else:
         try:
@@ -347,7 +347,7 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
             summary_json = json.loads(raw_text)
 
         except Exception as e:
-            print(f"‼️‼️ SUMMARY GENERATION FAILED ‼️‼️")
+            print(f" SUMMARY GENERATION FAILED ‼")
             print(f"Error: {e}")
             summary_json = {"error": "Failed to generate AI summary."}
 
