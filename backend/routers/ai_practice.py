@@ -47,9 +47,6 @@ def _get_last_session_for_role(uid: str, role: str):
     """
     Look up the most recent practice session for a given user+role
     from existing practiceSessions collection.
-
-    Returns:
-        (doc_id, doc_dict) or (None, None) if not found.
     """
     coll = (
         db.collection("users")
@@ -76,14 +73,14 @@ def _get_last_session_for_role(uid: str, role: str):
 
 # ---------------------- START PRACTICE (ADAPTIVE) ----------------------
 @router.get("/practice/start")
-def start_practice(role: str, uid: str):
+def start_practice(
+    role: str, 
+    uid: str,
+    difficulty: str = "adaptive", # adaptive, easy, medium, hard
+    focus: str = "general"        # general, technical, behavioral, weakness_remediation
+):
     """
-    Start a new practice round for a role.
-
-    - Uses existing practiceSessions collection.
-    - If previous sessions exist for this role, we adapt
-      question generation based on last summary (weaknesses, score).
-    - Each document in practiceSessions is effectively a "round".
+    Start a new practice round for a role with tunable difficulty/focus.
     """
     session_id = str(uuid.uuid4())
 
@@ -100,52 +97,63 @@ def start_practice(role: str, uid: str):
         prev_score = summary.get("overallScore")
         prev_weaknesses = summary.get("weaknesses", []) or []
 
-    # New round number (1 if none before)
+    # New round number
     round_number = (prev_round or 0) + 1
+    
+    # --- 1. Build Difficulty Prompt ---
+    diff_instruction = ""
+    if difficulty == "easy":
+        diff_instruction = "Keep questions fundamental, beginner-friendly, and forgiving."
+    elif difficulty == "medium":
+        diff_instruction = "Standard industry interview difficulty."
+    elif difficulty == "hard":
+        diff_instruction = "Very challenging. Include complex edge cases, system design depth, and stress-test questions."
+    else: 
+        # "adaptive" default
+        if prev_round == 0:
+            diff_instruction = "This is the candidate's first round. Keep it standard and foundational."
+        else:
+            diff_instruction = f"This is round {round_number}. Increase difficulty slightly from the previous round."
 
-    # Build an adaptive prompt if we have past data; otherwise basic
-    if prev_round == 0:
-        # First ever round for this role
-        prompt = f"""
-        You are an AI interview coach.
+    # --- 2. Build Focus Prompt ---
+    focus_instruction = ""
+    weaknesses_text = ", ".join(prev_weaknesses) if prev_weaknesses else "None recorded"
 
-        Generate exactly 8 realistic interview questions for a {role} mock interview.
-
-        - Mix behavioral and role-specific questions.
-        - Assume this is the candidate's first round for this role.
-
-        Return ONLY a JSON array of strings. No explanations, no extra keys.
-        """
+    if focus == "technical":
+        focus_instruction = "Focus 80% on technical hard skills, coding concepts, and domain knowledge."
+    elif focus == "behavioral":
+        focus_instruction = "Focus 80% on behavioral questions (STAR method), soft skills, and culture fit."
+    elif focus == "weakness_remediation":
+        if prev_weaknesses:
+            focus_instruction = f"CRITICAL: The candidate previously failed at: {weaknesses_text}. Generate questions SPECIFICALLY targeting these weak areas to test improvement."
+        else:
+            focus_instruction = "Focus on general competency (no previous weaknesses found to target)."
     else:
-        # Adaptive follow-up round
-        weaknesses_text = (
-            ", ".join(prev_weaknesses) if prev_weaknesses else "none clearly identified"
-        )
-        prompt = f"""
-        You are an AI interview coach.
+        # "general"
+        if prev_weaknesses and difficulty == "adaptive":
+             focus_instruction = f"Mix technical and behavioral. Give slight attention to previous weaknesses: {weaknesses_text}."
+        else:
+             focus_instruction = "Balanced mix of behavioral and technical questions."
 
-        The candidate is doing a FOLLOW-UP mock interview for the role: {role}.
+    prompt = f"""
+    You are an expert AI interview coach.
+    Role: {role}
+    Round: {round_number}
+    
+    CONFIGURATION:
+    - Difficulty Strategy: {diff_instruction}
+    - Focus Strategy: {focus_instruction}
 
-        Previous round details:
-        - Round: {prev_round}
-        - Overall score: {prev_score}
-        - Main weaknesses to improve: {weaknesses_text}
-
-        For this new round (round {round_number}):
-        - Increase difficulty slightly compared to previous round.
-        - Focus a bit more on the weaknesses mentioned.
-        - Still keep it realistic and interview-like.
-
-        Now generate exactly 8 interview questions for this {role} mock interview.
-        Return ONLY a JSON array of plain strings. No extra text, no markdown.
-        """
+    Task: Generate exactly 8 realistic interview questions.
+    Return ONLY a JSON array of strings. No markdown, no keys, just the list.
+    """
 
     model = _get_model()
     try:
         res = model.generate_content(prompt)
         questions = _json_array(res.text)[:8]
     except Exception as e:
-        print(f"[practice/start] Gemini failed, using fallback questions. Error: {e}")
+        print(f"[practice/start] Gemini failed, using fallback. Error: {e}")
         questions = [
             f"Tell me about yourself in the context of {role}.",
             "Describe a challenging problem you solved recently.",
@@ -165,10 +173,14 @@ def start_practice(role: str, uid: str):
     sess_dir = os.path.join(BASE_DIR, uid, session_id)
     os.makedirs(sess_dir, exist_ok=True)
 
-    # This doc is effectively "round {round_number}" for this role
+    # Save Session Metadata
     db.collection("users").document(uid).collection("practiceSessions").document(session_id).set({
         "role": role,
         "roundNumber": round_number,
+        "config": {
+            "difficulty": difficulty,
+            "focus": focus
+        },
         "basedOnSessionId": last_doc_id,
         "basedOnWeaknesses": prev_weaknesses,
         "previousScore": prev_score,
@@ -182,9 +194,8 @@ def start_practice(role: str, uid: str):
         "sessionId": session_id,
         "questions": questions,
         "roundNumber": round_number,
+        "config": {"difficulty": difficulty, "focus": focus},
         "previousRound": prev_round,
-        "previousScore": prev_score,
-        "previousWeaknesses": prev_weaknesses,
     }
 
 
@@ -327,11 +338,7 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
             print("------------------------------------------")
 
             out = model.generate_content(prompt)
-            raw_text = (out.text or "").strip()
-
-            print(f"--- DEBUG: Received this raw text from Gemini ---")
-            print(raw_text)
-            print(f"-------------------------------------------------")
+            raw_text = (out.text or "").strip() 
 
             if raw_text.startswith("```"):
                 raw_text = raw_text.strip("`")
@@ -342,7 +349,6 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
         except Exception as e:
             print(f"‼️‼️ SUMMARY GENERATION FAILED ‼️‼️")
             print(f"Error: {e}")
-            print(f"‼️‼️ END OF ERROR ‼️‼️")
             summary_json = {"error": "Failed to generate AI summary."}
 
     # Persist completion + summary + per-question results

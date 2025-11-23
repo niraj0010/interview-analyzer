@@ -16,6 +16,8 @@ import StopIcon from "@mui/icons-material/Stop";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import BoltIcon from "@mui/icons-material/Bolt"; 
+import CenterFocusStrongIcon from "@mui/icons-material/CenterFocusStrong"; 
 import { useLocation, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 
@@ -31,9 +33,18 @@ export default function PracticeSession() {
   const navigate = useNavigate();
 
   const role = location?.state?.role ?? "Software Developer";
+  const initialSessionId = location?.state?.sessionId ?? "";
+  const initialQuestions =
+    (location?.state?.questions as string[] | undefined) ?? [];
+  
+  const config = location?.state?.config ?? { difficulty: "Adaptive", focus: "General" };
+  
+  // 👇 HERE IS THE NEW ROUND NUMBER (Defaults to 1 if not found)
+  const roundNumber = location?.state?.roundNumber ?? 1;
+
   const MAX = 8;
 
-  // ---  Firebase Auth ---
+  // --- Firebase Auth ---
   const auth = getAuth();
   const [uid, setUid] = useState<string | null>(null);
 
@@ -45,7 +56,7 @@ export default function PracticeSession() {
     return () => unsub();
   }, [auth, navigate]);
 
-  const [sessionId, setSessionId] = useState("");
+  const [sessionId, setSessionId] = useState(initialSessionId);
   const [questions, setQuestions] = useState<string[]>([]);
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("FETCHING_QUESTIONS");
@@ -56,20 +67,36 @@ export default function PracticeSession() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const intervalRef = useRef<number | null>(null);
+  const startedRef = useRef(false); 
 
   const question = questions[index] ?? "";
   const progress = ((index + 1) / MAX) * 100;
 
-  // ---  Fetch Questions only when UID exists ---
+  // --- Initialize questions and session ---
   useEffect(() => {
-    if (!uid) return;
+    if (!uid) return; 
 
+    if (startedRef.current) return;
+
+    if (initialSessionId && initialQuestions.length > 0) {
+      let qs = [...initialQuestions];
+      qs = qs.slice(0, MAX);
+      while (qs.length < MAX) qs.push("Describe a recent challenge.");
+
+      setSessionId(initialSessionId);
+      setQuestions(qs);
+      setPhase("IDLE");
+      startedRef.current = true;
+      return;
+    }
+
+    // Fallback initialization
     (async () => {
       try {
         const res = await fetch(
           `http://127.0.0.1:8000/practice/start?role=${encodeURIComponent(
             role
-          )}&uid=${uid}`
+          )}&uid=${uid}&difficulty=adaptive&focus=general`
         );
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
@@ -81,13 +108,14 @@ export default function PracticeSession() {
         setSessionId(data.sessionId);
         setQuestions(qs);
         setPhase("IDLE");
+        startedRef.current = true;
       } catch (e) {
         console.error(e);
         alert("Failed to start practice. Please try again.");
         navigate(-1);
       }
     })();
-  }, [role, uid, navigate]);
+  }, [uid, role, initialSessionId, initialQuestions, navigate]);
 
   // Timer helpers
   const startTimer = () => {
@@ -98,6 +126,7 @@ export default function PracticeSession() {
       1000
     ) as unknown as number;
   };
+
   const stopTimer = () => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -147,9 +176,9 @@ export default function PracticeSession() {
     else skip();
   };
 
-  // ---  Submit Answer ---
+  // --- Submit Answer ---
   const submitAnswer = async () => {
-    if (!uid) return;
+    if (!uid || !sessionId) return;
     setPhase("PROCESSING_ANSWER");
 
     try {
@@ -178,9 +207,9 @@ export default function PracticeSession() {
     }
   };
 
-  // ---  Skip ---
+  // --- Skip ---
   const skip = async () => {
-    if (!uid) return;
+    if (!uid || !sessionId) return;
     setPhase("PROCESSING_ANSWER");
 
     try {
@@ -218,9 +247,9 @@ export default function PracticeSession() {
     }
   };
 
-  // ---  Finish session ---
+  // --- Finish session ---
   const finish = async () => {
-    if (!uid) return;
+    if (!uid || !sessionId) return;
     setPhase("FINALIZING");
 
     try {
@@ -235,17 +264,15 @@ export default function PracticeSession() {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
 
-      
       navigate("/feedback", {
         state: {
-          userId: uid,           // Renamed 'uid' to 'userId'
-          interviewId: sessionId,  // Renamed 'sessionId' to 'interviewId'
-          source: "practice",      // Added the 'source' flag
+          userId: uid,
+          interviewId: sessionId,
+          source: "practice",
           role: role,
         },
       });
     } catch (e) {
-// ... {
       console.error(e);
       alert("Failed to compile your interview feedback. Please retry.");
       setPhase("IDLE");
@@ -262,24 +289,68 @@ export default function PracticeSession() {
       {isReady && uid && (
         <>
           <Paper sx={{ p: 2, mb: 3, bgcolor: "#132030", borderRadius: "12px" }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              alignItems="flex-start"
+            >
               <Box>
-                <Typography variant="h6">
-                  Question {Math.min(index + 1, MAX)} of {MAX}
-                </Typography>
-                <Typography fontSize={13} opacity={0.6}>
+                {/* 👇 HERE IS THE UPDATED HEADER WITH THE ROUND CHIP */}
+                <Stack direction="row" alignItems="center" gap={1.5}>
+                     <Typography variant="h6">
+                        Question {Math.min(index + 1, MAX)} of {MAX}
+                    </Typography>
+                    
+                    <Chip 
+                        label={`Round ${roundNumber}`} 
+                        size="small" 
+                        sx={{ 
+                            bgcolor: "#3b82f6", 
+                            color: "white", 
+                            fontWeight: "bold",
+                            height: 24,
+                            fontSize: "0.75rem"
+                        }} 
+                    />
+                </Stack>
+                
+                <Typography fontSize={14} sx={{ opacity: 0.7, mt: 0.5 }}>
                   Role: {role}
                 </Typography>
+                
+                {/* Configuration Chips */}
+                <Stack direction="row" spacing={1} mt={1.5}>
+                  <Chip 
+                    icon={<BoltIcon style={{fontSize: 16}} />}
+                    label={`Difficulty: ${config.difficulty}`} 
+                    size="small" 
+                    sx={{ bgcolor: "#334155", color: "#94a3b8", textTransform: 'capitalize' }}
+                  />
+                  <Chip 
+                    icon={<CenterFocusStrongIcon style={{fontSize: 16}} />}
+                    label={`Focus: ${config.focus}`} 
+                    size="small" 
+                    sx={{ bgcolor: "#334155", color: "#94a3b8", textTransform: 'capitalize' }}
+                  />
+                </Stack>
               </Box>
-              <Chip
-                label={`${Math.round(((index + 1) / MAX) * 100)}% Complete`}
-                size="small"
-                sx={{ bgcolor: "#0d9488", color: "white" }}
-              />
+
+              <Stack alignItems="flex-end">
+                <Chip
+                  label={`${Math.round(((index + 1) / MAX) * 100)}% Complete`}
+                  size="small"
+                  sx={{ bgcolor: "#0d9488", color: "white", mb: 1 }}
+                />
+              </Stack>
             </Stack>
-            <LinearProgress variant="determinate" value={progress} sx={{ mt: 2, borderRadius: 5 }} />
+            <LinearProgress
+              variant="determinate"
+              value={progress}
+              sx={{ mt: 2, borderRadius: 5, height: 8, bgcolor: "#1e293b", "& .MuiLinearProgress-bar": { bgcolor: "#0d9488" } }}
+            />
           </Paper>
 
+          {/* Question Card */}
           <Paper
             sx={{
               p: 4,
@@ -293,7 +364,10 @@ export default function PracticeSession() {
               alignItems: "center",
             }}
           >
-            <Typography variant="h5" sx={{ mb: 4, fontWeight: 600, minHeight: "3em" }}>
+            <Typography
+              variant="h5"
+              sx={{ mb: 4, fontWeight: 600, minHeight: "3em" }}
+            >
               {question}
             </Typography>
 
@@ -311,6 +385,7 @@ export default function PracticeSession() {
                 boxShadow: `0 0 20px ${
                   phase === "RECORDING" ? "#e63946" : "#14b8a6"
                 }`,
+                transition: "all 0.2s"
               }}
             >
               {phase === "RECORDING" ? (
@@ -322,7 +397,9 @@ export default function PracticeSession() {
 
             <Typography sx={{ mt: 2, mb: 3, fontSize: "1.1rem" }}>
               {phase === "RECORDING"
-                ? `Recording... ${new Date(timer * 1000).toISOString().substr(14, 5)}`
+                ? `Recording... ${new Date(timer * 1000)
+                    .toISOString()
+                    .substr(14, 5)}`
                 : "Start Recording"}
             </Typography>
 
@@ -332,7 +409,7 @@ export default function PracticeSession() {
                 variant="contained"
                 onClick={handleNextQuestion}
                 disabled={disableActions}
-                sx={{ bgcolor: "#0d9488", "&:hover": { bgcolor: "#0a7066" } }}
+                sx={{ bgcolor: "#0d9488", "&:hover": { bgcolor: "#0a7066" }, px: 4, py: 1.2 }}
               >
                 {blob ? "Save & Next" : "Next Question (Skip)"}
               </Button>
@@ -345,7 +422,7 @@ export default function PracticeSession() {
                 color="secondary"
                 onClick={finish}
                 disabled={disableActions}
-                sx={{ animation: "pulse 1.5s infinite" }}
+                sx={{ animation: "pulse 1.5s infinite", px: 4, py: 1.2 }}
               >
                 Finish & Get Feedback
               </Button>
@@ -353,12 +430,18 @@ export default function PracticeSession() {
 
             <Typography sx={{ mt: 3, opacity: 0.6, fontSize: "0.9rem" }}>
               {phase === "IDLE" && recorded[index] ? "Answer Saved. " : ""}
-              Take your time and speak clearly. You can re-record if needed.
+              Take your time and speak clearly. You can re record if needed.
             </Typography>
           </Paper>
 
+          {/* Question Navigator Bubbles */}
           <Paper sx={{ p: 2, mt: 3, bgcolor: "#132030", borderRadius: "12px" }}>
-            <Stack direction="row" justifyContent="center" alignItems="center" spacing={2}>
+            <Stack
+              direction="row"
+              justifyContent="center"
+              alignItems="center"
+              spacing={2}
+            >
               {[...Array(MAX).keys()].map((i) => {
                 const isActive = i === index;
                 const isDone = recorded[i];
@@ -373,14 +456,20 @@ export default function PracticeSession() {
                       justifyContent: "center",
                       alignItems: "center",
                       bgcolor: isActive ? "#14b8a6" : "#1e293b",
-                      border: isActive ? "2px solid #fff" : "2px solid transparent",
+                      border: isActive
+                        ? "2px solid #fff"
+                        : "2px solid transparent",
                       color: isActive ? "white" : "#e2e8f0",
                       fontWeight: isActive ? 700 : 400,
                       transition: "all 0.3s ease",
                       opacity: isDone || isActive ? 1 : 0.6,
                     }}
                   >
-                    {isDone ? <CheckCircleIcon sx={{ color: "#4ade80" }} /> : i + 1}
+                    {isDone ? (
+                      <CheckCircleIcon sx={{ color: "#4ade80" }} />
+                    ) : (
+                      i + 1
+                    )}
                   </Box>
                 );
               })}
@@ -390,24 +479,33 @@ export default function PracticeSession() {
       )}
 
       {/* Loading Overlays */}
-      <Backdrop open={phase === "FETCHING_QUESTIONS"} sx={{ color: "#fff", zIndex: 9999 }}>
+      <Backdrop
+        open={phase === "FETCHING_QUESTIONS"}
+        sx={{ color: "#fff", zIndex: 9999 }}
+      >
         <Stack alignItems="center" spacing={2}>
           <CircularProgress />
-          <Typography>Preparing your interview…</Typography>
+          <Typography>Preparing your interview...</Typography>
         </Stack>
       </Backdrop>
 
-      <Backdrop open={phase === "PROCESSING_ANSWER"} sx={{ color: "#fff", zIndex: 9999 }}>
+      <Backdrop
+        open={phase === "PROCESSING_ANSWER"}
+        sx={{ color: "#fff", zIndex: 9999 }}
+      >
         <Stack alignItems="center" spacing={2}>
           <CircularProgress />
-          <Typography>Saving your answer…</Typography>
+          <Typography>Saving your answer...</Typography>
         </Stack>
       </Backdrop>
 
-      <Backdrop open={phase === "FINALIZING"} sx={{ color: "#fff", zIndex: 9999 }}>
+      <Backdrop
+        open={phase === "FINALIZING"}
+        sx={{ color: "#fff", zIndex: 9999 }}
+      >
         <Stack alignItems="center" spacing={2}>
           <CircularProgress />
-          <Typography>Compiling your interview feedback…</Typography>
+          <Typography>Compiling your interview feedback...</Typography>
         </Stack>
       </Backdrop>
     </Box>
