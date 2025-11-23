@@ -1,4 +1,3 @@
-# backend/routers/ai_practice.py
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from datetime import datetime
@@ -23,7 +22,7 @@ if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
 PRIMARY_MODEL = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-2.0-flash" 
+FALLBACK_MODEL = "gemini-2.0-flash"
 
 BASE_DIR = os.path.abspath(os.path.join(os.getcwd(), "uploads", "practice"))
 os.makedirs(BASE_DIR, exist_ok=True)
@@ -44,43 +43,149 @@ def _json_array(text: str):
     return json.loads(text)
 
 
-# ---------------------- START PRACTICE ----------------------
+def _get_last_session_for_role(uid: str, role: str):
+    """
+    Look up the most recent practice session for a given user+role
+    from existing practiceSessions collection.
+
+    Returns:
+        (doc_id, doc_dict) or (None, None) if not found.
+    """
+    coll = (
+        db.collection("users")
+        .document(uid)
+        .collection("practiceSessions")
+    )
+
+    try:
+        # Filter by role and order by createdAt desc
+        query = (
+            coll.where("role", "==", role)
+            .order_by("createdAt", direction=firestore.Query.DESCENDING)
+            .limit(1)
+        )
+        docs = list(query.stream())
+        if not docs:
+            return None, None
+        doc = docs[0]
+        return doc.id, doc.to_dict()
+    except Exception as e:
+        print(f"[practice] Failed to fetch last session for role={role}: {e}")
+        return None, None
+
+
+# ---------------------- START PRACTICE (ADAPTIVE) ----------------------
 @router.get("/practice/start")
 def start_practice(role: str, uid: str):
-    session_id = str(uuid.uuid4())
-    prompt = f"""
-    Generate exactly 8 realistic interview questions for a {role}.
-    Return ONLY a JSON array of strings.
     """
+    Start a new practice round for a role.
+
+    - Uses existing practiceSessions collection.
+    - If previous sessions exist for this role, we adapt
+      question generation based on last summary (weaknesses, score).
+    - Each document in practiceSessions is effectively a "round".
+    """
+    session_id = str(uuid.uuid4())
+
+    # Look up last round for this role (if any)
+    last_doc_id, last_data = _get_last_session_for_role(uid, role)
+
+    prev_round = 0
+    prev_score = None
+    prev_weaknesses = []
+
+    if last_data:
+        prev_round = last_data.get("roundNumber", 0)
+        summary = last_data.get("summary") or {}
+        prev_score = summary.get("overallScore")
+        prev_weaknesses = summary.get("weaknesses", []) or []
+
+    # New round number (1 if none before)
+    round_number = (prev_round or 0) + 1
+
+    # Build an adaptive prompt if we have past data; otherwise basic
+    if prev_round == 0:
+        # First ever round for this role
+        prompt = f"""
+        You are an AI interview coach.
+
+        Generate exactly 8 realistic interview questions for a {role} mock interview.
+
+        - Mix behavioral and role-specific questions.
+        - Assume this is the candidate's first round for this role.
+
+        Return ONLY a JSON array of strings. No explanations, no extra keys.
+        """
+    else:
+        # Adaptive follow-up round
+        weaknesses_text = (
+            ", ".join(prev_weaknesses) if prev_weaknesses else "none clearly identified"
+        )
+        prompt = f"""
+        You are an AI interview coach.
+
+        The candidate is doing a FOLLOW-UP mock interview for the role: {role}.
+
+        Previous round details:
+        - Round: {prev_round}
+        - Overall score: {prev_score}
+        - Main weaknesses to improve: {weaknesses_text}
+
+        For this new round (round {round_number}):
+        - Increase difficulty slightly compared to previous round.
+        - Focus a bit more on the weaknesses mentioned.
+        - Still keep it realistic and interview-like.
+
+        Now generate exactly 8 interview questions for this {role} mock interview.
+        Return ONLY a JSON array of plain strings. No extra text, no markdown.
+        """
 
     model = _get_model()
     try:
         res = model.generate_content(prompt)
         questions = _json_array(res.text)[:8]
-    except:
+    except Exception as e:
+        print(f"[practice/start] Gemini failed, using fallback questions. Error: {e}")
         questions = [
-            f"Tell me about yourself in {role}.",
-            "Describe a challenge you solved.",
-            "Tell me a time you failed.",
-            "Walk me through a complex problem.",
-            "Describe pressure tradeoffs.",
-            "Strengths/Weaknesses?",
-            "How do you improve skills?",
-            f"Why are you a fit for {role}?"
+            f"Tell me about yourself in the context of {role}.",
+            "Describe a challenging problem you solved recently.",
+            "Tell me about a time you failed and what you learned.",
+            "Walk me through a complex decision you had to make.",
+            "Describe a time you had to manage conflicting priorities.",
+            "What are your key strengths and weaknesses for this role?",
+            "How do you actively improve your skills and stay current?",
+            f"Why are you a strong fit for this {role} position?"
         ]
+
+    # Ensure we always have 8 questions
+    if len(questions) < 8:
+        while len(questions) < 8:
+            questions.append("Describe a recent professional challenge and how you handled it.")
 
     sess_dir = os.path.join(BASE_DIR, uid, session_id)
     os.makedirs(sess_dir, exist_ok=True)
 
+    # This doc is effectively "round {round_number}" for this role
     db.collection("users").document(uid).collection("practiceSessions").document(session_id).set({
         "role": role,
+        "roundNumber": round_number,
+        "basedOnSessionId": last_doc_id,
+        "basedOnWeaknesses": prev_weaknesses,
+        "previousScore": prev_score,
         "questions": questions,
         "createdAt": datetime.utcnow(),
         "complete": False,
         "perQuestion": []
     })
 
-    return {"sessionId": session_id, "questions": questions}
+    return {
+        "sessionId": session_id,
+        "questions": questions,
+        "roundNumber": round_number,
+        "previousRound": prev_round,
+        "previousScore": prev_score,
+        "previousWeaknesses": prev_weaknesses,
+    }
 
 
 # ---------------------- RECORD ANSWER ----------------------
@@ -93,7 +198,6 @@ async def practice_answer(
     skipped: str = Form(...),
     file: UploadFile = File(None),
 ):
-
     session_ref = db.collection("users").document(uid).collection("practiceSessions").document(sessionId)
     snap = session_ref.get()
 
@@ -161,7 +265,11 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
 
     for a in sorted(answers, key=lambda x: x["questionIndex"]):
         q_idx = a["questionIndex"]
-        q_text = questions[q_idx]
+        # safe guard if old doc doesn't have this index
+        if q_idx < len(questions):
+            q_text = questions[q_idx]
+        else:
+            q_text = f"Question {q_idx+1}"
 
         if a.get("skipped"):
             combined.append(f"Q{q_idx+1}: {q_text}\n[SKIPPED]")
@@ -192,13 +300,11 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
     model = _get_model()
     summary_json = {}
 
-    # --- ⬇️ CORRECTED PROMPT BLOCK ⬇️ ---
     if not model:
         print("‼️ ERROR: Gemini model could not be initialized. Check API key and configuration.")
         summary_json = {"error": "AI model unavailable"}
     else:
         try:
-            # This is the correct prompt that uses your transcript
             prompt = f"""
             You are an AI interview coach. Analyze this full mock interview transcript.
             Some questions may be marked [SKIPPED] — ignore those when scoring.
@@ -215,8 +321,7 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
               "recommendedImprovements": ["string"]
             }}
             """.strip()
-            
-            # --- We print it just to be safe ---
+
             print("--- DEBUG: Sending this text to Gemini ---")
             print(prompt)
             print("------------------------------------------")
@@ -235,14 +340,12 @@ def practice_finish(sessionId: str = Form(...), uid: str = Form(...)):
             summary_json = json.loads(raw_text)
 
         except Exception as e:
-            # --- This will now print the real error ---
             print(f"‼️‼️ SUMMARY GENERATION FAILED ‼️‼️")
             print(f"Error: {e}")
             print(f"‼️‼️ END OF ERROR ‼️‼️")
             summary_json = {"error": "Failed to generate AI summary."}
-    
-    # --- ⬆️ END OF CORRECTION ⬆️ ---
 
+    # Persist completion + summary + per-question results
     session_ref.update({
         "complete": True,
         "completedAt": datetime.utcnow(),
