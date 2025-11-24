@@ -10,7 +10,7 @@ export const FileUpload: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploading, setUploading] = useState<boolean>(false);
   const navigate = useNavigate();
-
+ 
   const handleFileUpload = async (file: File) => {
     const auth = getAuth();
     const user = auth.currentUser;
