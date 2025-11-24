@@ -25,6 +25,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { useLocation, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { doc, onSnapshot } from "firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 // === THEME ===
 export const theme = createTheme({
@@ -228,24 +229,34 @@ interface InterviewData {
 const FeedbackPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { userId, interviewId, source = "upload", role } = (location.state || {}) as {
-    userId: string;
-    interviewId: string;
-    source: "upload" | "practice";
-    role?: string;
-  };
+  const auth = getAuth();
+  
+  // Safe destructure with defaults
+  const state = (location.state || {}) as any;
+  const { interviewId, source = "upload", role } = state;
+  // Initialize userId from state, but allow fallback to Auth
+  const [userId, setUserId] = useState<string | null>(state.userId || null);
 
   const [data, setData] = useState<InterviewData | null>(null);
   const [tab, setTab] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // --- Real-time Firestore listener ---
+  // 1. Auth Listener: Ensure we have a userId if navigation didn't pass it
   useEffect(() => {
-    if (!userId || !interviewId) {
-      console.error("Missing userId or interviewId");
-      setLoading(false);
-      return;
-    }
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserId(user.uid);
+      } else {
+        // If not logged in and no ID passed, redirect to login
+        if (!state.userId) navigate("/login");
+      }
+    });
+    return () => unsub();
+  }, [auth, navigate, state.userId]);
+
+  // 2. Data Fetcher
+  useEffect(() => {
+    if (!userId || !interviewId) return;
 
     // Different collection based on source
     const collectionName = source === "practice" ? "practiceSessions" : "interviews";
@@ -255,26 +266,21 @@ const FeedbackPage: React.FC = () => {
       if (snap.exists()) {
         const raw = snap.data() as any;
         
+        // --- PRACTICE SESSION MAPPING ---
         if (source === "practice") {
-          // --- ⬇️ FIXED PRACTICE PIPELINE LOGIC ⬇️ ---
           const summary = raw?.summary || {};
           const perQuestionData = raw?.perQuestion || [];
           
-          // --- FIX 1: Map all possible AI key names ---
           const strengths = summary.keyStrengths ?? summary.strengths ?? [];
-          
-          // Combine all "improvement" fields from the AI
           const improvements = [
             ...(summary.areasForImprovement ?? []),
             ...(summary.weaknesses ?? []),
             ...(summary.recommendedImprovements ?? []),
           ];
-          // Use the 'improvements' list as a fallback for the detailed feedback tab
           const immediate = summary.immediateActionItems ?? improvements;
           const longTerm = summary.longTermDevelopment ?? improvements;
 
-
-          // --- FIX 2: Calculate AI Confidence from 'perQuestion' data ---
+          // Calculate AI Confidence from individual question emotions
           let calculatedAIConfidence = 0;
           if (perQuestionData.length > 0) {
             const answeredQuestions = perQuestionData.filter((q: PracticeQuestionAnswer) => !q.skipped && q.emotion);
@@ -282,7 +288,6 @@ const FeedbackPage: React.FC = () => {
               const totalConfidence = answeredQuestions.reduce(
                 (acc: number, q: PracticeQuestionAnswer) => acc + (q.emotion?.confidence || 0), 0
               );
-              // Multiply by 100 to get percentage
               calculatedAIConfidence = Math.round((totalConfidence / answeredQuestions.length) * 100);
             }
           }
@@ -290,33 +295,28 @@ const FeedbackPage: React.FC = () => {
           const merged: InterviewData = {
             fileName: "Practice Session",
             role: raw?.role || role,
-            duration: `${perQuestionData.length} Questions`, // Use actual length
+            duration: `${perQuestionData.length} Questions`,
             overallScore: summary.overallScore,
             grade: summary.grade,
             performanceLevel: summary.performanceLevel,
-            
-            // Use calculated score if AI didn't provide one
             aiConfidence: summary.aiConfidence ?? calculatedAIConfidence,
-            // SpeechQuality can't be calculated from text, so it will be 0% or null
-            speechQuality: summary.speechQuality, 
-
+            speechQuality: summary.speechQuality ?? 0,
             keyStrengths: strengths, 
             areasForImprovement: improvements,
             immediateActionItems: immediate,
             longTermDevelopment: longTerm,
-            
             performanceBreakdown: summary.performanceBreakdown || [],
-            status: raw?.complete ? "completed" : "processing",
+            // FORCE COMPLETED if summary exists, even if 'complete' flag is missing
+            status: raw?.complete || summary.overallScore ? "completed" : "processing",
             questions: raw?.questions || [],
             perQuestion: perQuestionData,
             summary: summary,
             complete: raw?.complete || false,
           };
           setData(merged);
-          // --- ⬆️ END OF FIX ⬆️ ---
-
-        } else {
-          // Handle upload pipeline data structure (existing logic)
+        } 
+        // --- UPLOAD PIPELINE MAPPING ---
+        else {
           const feedback = (raw?.feedback ?? {}) as Partial<InterviewData>;
           const merged: InterviewData = {
             ...feedback,
@@ -328,7 +328,8 @@ const FeedbackPage: React.FC = () => {
             speechQuality: raw?.speechQuality ?? feedback?.speechQuality,
             grade: raw?.grade ?? feedback?.grade,
             performanceLevel: raw?.performanceLevel ?? feedback?.performanceLevel,
-            status: "completed", // Upload pipeline items are complete when they exist
+            // FORCE COMPLETED if we are viewing history (data exists)
+            status: raw?.status || "completed", 
           };
           setData(merged);
         }
@@ -453,7 +454,7 @@ const FeedbackPage: React.FC = () => {
     if (source === "practice") {
       navigate("/practice");
     } else {
-      navigate("/landing");
+      navigate("/dashboard"); // Updated to dashboard
     }
   };
 
@@ -465,14 +466,13 @@ const FeedbackPage: React.FC = () => {
         <Container sx={{ mt: 10, textAlign: "center" }}>
           <CircularProgress sx={{ color: "#14b8a6" }} />
           <Typography variant="h6" color="text.secondary" sx={{ mt: 2 }}>
-            {source === "practice" 
-              ? "Processing your practice session..." 
-              : "Uploading and analyzing your interview..."}
+             Loading results...
           </Typography>
         </Container>
       </ThemeProvider>
     );
 
+  // Status check for *NEW* uploads only
   if (data.status !== "completed" && source === "upload")
     return (
       <ThemeProvider theme={theme}>
@@ -751,7 +751,7 @@ const FeedbackPage: React.FC = () => {
                 )}
               </Box>
             ) : (
-              // Upload Pipeline Transcript View (existing code)
+              // Upload Pipeline Transcript View
               <Box>
                 <Box
                   sx={{
@@ -946,8 +946,6 @@ const FeedbackPage: React.FC = () => {
                 </CardContent>
               </MuiCard>
             )}
-
-
           </Box>
         )}
       </Container>
