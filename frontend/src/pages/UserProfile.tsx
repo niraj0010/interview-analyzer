@@ -121,7 +121,7 @@ const MetricRow = ({ label, score }: { label: string; score: number }) => {
   );
 };
 
-// -------- PDF export for an interview --------
+
 const handleExportPDF = (interview: Interview) => {
   const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
 
@@ -141,7 +141,7 @@ const handleExportPDF = (interview: Interview) => {
   doc.setDrawColor(210);
   doc.line(40, 115, 555, 115);
 
-  // Performance table
+ 
   doc.setFontSize(13);
   doc.setTextColor(30);
   doc.text("Performance Breakdown", 40, 140);
@@ -204,7 +204,7 @@ const handleExportPDF = (interview: Interview) => {
     doc.text("Transcript (excerpt)", 40, y);
     doc.setFont("helvetica", "normal");
     const wrapped = doc.splitTextToSize(interview.transcript, 515);
-    doc.text(wrapped.slice(0, 40), 40, y + 16); // first lines only
+    doc.text(wrapped.slice(0, 40), 40, y + 16); 
   }
 
   doc.setFontSize(9);
@@ -220,7 +220,7 @@ const handleExportPDF = (interview: Interview) => {
   );
 };
 
-// -------- Interview Card component (Figma-style) --------
+
 const InterviewCard: React.FC<{
   interview: Interview;
   onViewDetails: () => void;
@@ -249,7 +249,7 @@ const InterviewCard: React.FC<{
       }}
     >
       <CardContent sx={{ p: 2.75, pb: 2 }}>
-        {/* Header row: title + score pill */}
+        
         <Box
           sx={{
             display: "flex",
@@ -292,7 +292,7 @@ const InterviewCard: React.FC<{
           />
         </Box>
 
-        {/* Date + duration */}
+        
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, mb: 1.75 }}>
           <CalendarToday sx={{ fontSize: 15, color: "#94A3B8" }} />
           <Typography sx={{ fontSize: 13, color: "#94A3B8" }}>
@@ -304,7 +304,7 @@ const InterviewCard: React.FC<{
           </Typography>
         </Box>
 
-        {/* Info grid: company / position / file size / duration */}
+        
         <Box
           sx={{
             display: "grid",
@@ -359,7 +359,7 @@ const InterviewCard: React.FC<{
           </Box>
         </Box>
 
-        {/* Performance breakdown */}
+      
         <Typography
           variant="subtitle2"
           sx={{
@@ -446,7 +446,7 @@ const InterviewCard: React.FC<{
           )}
         </Box>
 
-        {/* Emotion analysis */}
+        
         <Paper
           elevation={0}
           sx={{
@@ -679,7 +679,6 @@ const UserProfile: React.FC = () => {
         </Box>
       </Box>
 
-      {/* MAIN LAYOUT */}
       <Box
         sx={{
           px: 2,
@@ -692,7 +691,7 @@ const UserProfile: React.FC = () => {
           width: "100%", 
         }}
       >
-        {/* Profile card (left) */}
+       
         <Box
           sx={{
             width: 360,
@@ -710,7 +709,7 @@ const UserProfile: React.FC = () => {
               overflow: "hidden",
             }}
           >
-            {/* Top Gradient */}
+           
             <Box
               sx={{
                 height: 65,
@@ -788,7 +787,7 @@ const UserProfile: React.FC = () => {
           </Card>
         </Box>
 
-        {/* Interview cards (right) */}
+        
         <Box
           sx={{
             flex: "3 1 600px",
