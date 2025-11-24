@@ -14,36 +14,29 @@ import {
   TextField,
   InputAdornment,
   Chip,
-  IconButton,
-  Tooltip,
   ButtonGroup,
   Paper,
+  Stack,
 } from "@mui/material";
 import {
   Search as SearchIcon,
   FilterList as FilterListIcon,
   CalendarToday,
-  Work,
   Business,
-  Folder,
-  BarChart,
-  HomeOutlined,
-  PersonOutline,
-  Logout,
-  Dashboard as DashboardIcon,
-  PlayCircleOutline,
   Description,
-  Bolt,
+  BarChart,
+  PlayCircleOutline,
+  Mic as MicIcon,
+  CloudUpload as CloudUploadIcon,
+  Bolt as BoltIcon,
 } from "@mui/icons-material";
 import { DownloadIcon } from "lucide-react";
 import { doc, getDoc, collection, getDocs, setDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "../firebase";
+import { auth, db } from "../firebase"; // Adjust path if needed
 import { useNavigate } from "react-router-dom";
 
-// =====================
-// ✅ Type Definitions
-// =====================
+// --- Types ---
 interface PerformanceItem {
   category: string;
   score: number;
@@ -53,12 +46,16 @@ interface PerformanceItem {
 
 interface Interview {
   id: string;
+  type: "upload" | "practice"; // <--- NEW: To distinguish types
   title: string;
   company: string;
   position: string;
-  fileName: string;
-  fileSize: string;
-  date: string;
+  fileName?: string; // Optional (only for uploads)
+  fileSize?: string; // Optional (only for uploads)
+  roundNumber?: number; // Optional (only for practice)
+  difficulty?: string; // Optional (only for practice)
+  date: string; // Display date string
+  timestamp: number; // For sorting
   duration: string;
   grade: string;
   score: number;
@@ -83,124 +80,15 @@ interface User {
   pastInterviews: Interview[];
 }
 
-// =====================
-// 🎨 UI Helpers
-// =====================
+// --- Layout Components ---
 const Shell = ({ children }: { children: React.ReactNode }) => (
-  <Box sx={{ bgcolor: "#0F172A", color: "#E2E8F0", minHeight: "100vh" }}>{children}</Box>
+  <Box sx={{ bgcolor: "#0F172A", color: "#E2E8F0", minHeight: "100vh" }}>
+    {children}
+  </Box>
 );
 
-// ----------------------
-// 📄 PDF Export Function
-// ----------------------
-const handleExportPDF = (interview: Interview) => {
-  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-  // Header
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text(interview.title, 40, 50);
-  doc.setFontSize(12);
-  doc.setTextColor(100);
-  doc.text(`Date: ${interview.date} | Duration: ${interview.duration}`, 40, 70);
-  doc.text(`Company: ${interview.company}`, 40, 90);
-  doc.text(`Position: ${interview.position}`, 40, 110);
-
-  // Divider
-  doc.setDrawColor(200);
-  doc.line(40, 120, 555, 120);
-
-  // Section 1: Performance Breakdown
-  doc.setTextColor(20);
-  doc.setFont("helvetica", "bold");
-  doc.text("Performance Breakdown", 40, 150);
-  autoTable(doc, {
-    startY: 160,
-    head: [["Category", "Score", "Summary"]],
-    body: interview.performance.map((p) => [
-      p.category,
-      p.score.toString(),
-      p.summary || "—",
-    ]),
-    theme: "grid",
-    styles: { fontSize: 10, cellPadding: 4 },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255 },
-  });
-
-  // Section 2: Key Strengths
-  let y = (doc as any).lastAutoTable?.finalY + 20 || 250;
-  doc.text("Key Strengths", 40, y);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  interview.keyStrengths.forEach((s, i) => {
-    doc.text(`• ${s}`, 50, y + 15 + i * 15);
-  });
-
-  // Section 3: Areas for Improvement
-  y += 40 + interview.keyStrengths.length * 15;
-  doc.setFont("helvetica", "bold");
-  doc.text("Areas for Improvement", 40, y);
-  doc.setFont("helvetica", "normal");
-  interview.areasForImprovement.forEach((a, i) => {
-    doc.text(`• ${a}`, 50, y + 15 + i * 15);
-  });
-
-  // Section 4: Immediate Actions
-  y += 40 + interview.areasForImprovement.length * 15;
-  doc.setFont("helvetica", "bold");
-  doc.text("Immediate Action Items", 40, y);
-  doc.setFont("helvetica", "normal");
-  interview.immediateActionItems.forEach((a, i) => {
-    doc.text(`• ${a}`, 50, y + 15 + i * 15);
-  });
-
-  // Section 5: Long-Term Development
-  y += 40 + interview.immediateActionItems.length * 15;
-  doc.setFont("helvetica", "bold");
-  doc.text("Long-Term Development", 40, y);
-  doc.setFont("helvetica", "normal");
-  interview.longTermDevelopment.forEach((a, i) => {
-    doc.text(`• ${a}`, 50, y + 15 + i * 15);
-  });
-
-  // Section 6: Emotion Analysis & Stats
-  y += 40 + interview.longTermDevelopment.length * 15;
-  doc.setFont("helvetica", "bold");
-  doc.text("AI Summary", 40, y);
-  doc.setFont("helvetica", "normal");
-  doc.text(
-    `Emotion: ${interview.emotionAnalysis} | Confidence: ${interview.aiConfidence}% | Speech Quality: ${interview.speechQuality}%`,
-    50,
-    y + 20
-  );
-  doc.text(`Performance Level: ${interview.performanceLevel}`, 50, y + 40);
-
-  // Transcript (if available)
-  if (interview.transcript) {
-    y += 70;
-    doc.setFont("helvetica", "bold");
-    doc.text("Interview Transcript (Excerpt)", 40, y);
-    doc.setFont("helvetica", "normal");
-    const transcript = doc.splitTextToSize(interview.transcript, 500);
-    doc.text(transcript.slice(0, 25), 50, y + 20); // first few lines only
-  }
-
-  // Footer
-  doc.setFontSize(9);
-  doc.setTextColor(150);
-  doc.text(
-    "Generated by Interview Analyzer AI Dashboard",
-    40,
-    doc.internal.pageSize.height - 30
-  );
-
-  // Save
-  doc.save(`${interview.title.replace(/\s+/g, "_")}.pdf`);
-};
-
-
 const SectionHeader = ({ title, subt }: { title: string; subt: string }) => (
-  <Box sx={{ px: { xs: 2.5, md: 4 }, pt: 3, pb: 1 }}>
+  <Box sx={{ px: 4, pt: 3, pb: 1 }}>
     <Typography variant="h4" sx={{ fontWeight: 800, color: "#fff" }}>
       {title}
     </Typography>
@@ -209,11 +97,13 @@ const SectionHeader = ({ title, subt }: { title: string; subt: string }) => (
 );
 
 const MetricRow = ({ label, score }: { label: string; score: number }) => {
-  const safe = Number.isFinite(score) ? Number(score) : 0;
-  const normalized = safe > 10 ? Math.min(safe, 100) : Math.min((safe / 10) * 100, 100);
+  const safe = Number.isFinite(score) ? score : 0;
+  const normalized = Math.min(Math.max(safe, 0), 100);
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1 }}>
-      <Typography sx={{ flex: 1.6, fontSize: 13, color: "#E2E8F0" }}>{label}</Typography>
+      <Typography sx={{ flex: 1.6, fontSize: 13, color: "#E2E8F0" }}>
+        {label}
+      </Typography>
       <LinearProgress
         variant="determinate"
         value={normalized}
@@ -224,20 +114,394 @@ const MetricRow = ({ label, score }: { label: string; score: number }) => {
           bgcolor: "rgba(59,130,246,.18)",
           "& .MuiLinearProgress-bar": {
             bgcolor: "#14B8A6",
-            transition: "width .6s ease",
           },
         }}
       />
-      <Typography sx={{ width: 38, textAlign: "right", fontSize: 13, color: "#94A3B8" }}>
-        {safe.toFixed(safe > 10 ? 0 : 1)}
+      <Typography
+        sx={{
+          width: 38,
+          textAlign: "right",
+          fontSize: 12,
+          color: "#94A3B8",
+        }}
+      >
+        {Math.round(normalized)}
       </Typography>
     </Box>
   );
 };
 
-// =====================
-// ✅ Main Component
-// =====================
+// --- PDF Export Logic (Kept mostly same, added safe checks) ---
+const handleExportPDF = (interview: Interview) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text(interview.title || "Interview Report", 40, 50);
+  
+  // Tag line
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text(`Type: ${interview.type.toUpperCase()}  |  Date: ${interview.date}`, 40, 70);
+
+  doc.setFontSize(11);
+  doc.setTextColor(90);
+  doc.text(`Company: ${interview.company}`, 40, 90);
+  doc.text(`Position: ${interview.position}`, 40, 106);
+
+  doc.setDrawColor(210);
+  doc.line(40, 120, 555, 120);
+
+  doc.setFontSize(13);
+  doc.setTextColor(30);
+  doc.text("Performance Breakdown", 40, 145);
+  autoTable(doc, {
+    startY: 155,
+    head: [["Category", "Score", "Summary"]],
+    body:
+      interview.performance.length > 0
+        ? interview.performance.map((p) => [
+            p.category,
+            `${Math.round(p.score)}/100`,
+            p.summary || "—",
+          ])
+        : [["—", "—", "No performance data"]],
+    styles: { fontSize: 10, cellPadding: 4 },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255 },
+  });
+
+  let y = (doc as any).lastAutoTable?.finalY || 200;
+
+  const writeList = (title: string, items: string[]) => {
+    if (!items || items.length === 0) return;
+    y += 24;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(title, 40, y);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    items.forEach((item, idx) => {
+      doc.text(`• ${item}`, 50, y + 16 + idx * 14);
+    });
+    y += 16 + items.length * 14;
+  };
+
+  writeList("Key Strengths", interview.keyStrengths);
+  writeList("Areas for Improvement", interview.areasForImprovement);
+
+  y += 24;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("AI Summary", 40, y);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  y += 16;
+  doc.text(
+    `Emotion: ${interview.emotionAnalysis || "N/A"}   |   Confidence: ${
+      Math.round(interview.aiConfidence) || 0
+    }%`,
+    40,
+    y
+  );
+
+  doc.save(`${(interview.title || "report").replace(/\s+/g, "_")}.pdf`);
+};
+
+// --- Unified Card Component ---
+const InterviewCard: React.FC<{
+  interview: Interview;
+  onViewDetails: () => void;
+}> = ({ interview, onViewDetails }) => {
+  const scoreOutOfTen =
+    typeof interview.score === "number"
+      ? (interview.score / 10).toFixed(1)
+      : "–";
+
+  const formattedEmotion = interview.emotionAnalysis
+    ? interview.emotionAnalysis.charAt(0).toUpperCase() +
+      interview.emotionAnalysis.slice(1)
+    : "Neutral";
+
+  const isPractice = interview.type === "practice";
+
+  return (
+    <Card
+      sx={{
+        flex: "0 0 420px",
+        maxWidth: 420,
+        bgcolor: "#0B1220",
+        borderRadius: 3,
+        border: "1px solid rgba(148,163,184,.18)",
+        boxShadow: "0 18px 40px rgba(15,23,42,0.85)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <CardContent sx={{ p: 2.75, pb: 2 }}>
+        {/* Header Row */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            mb: 1.5,
+            gap: 1,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Stack direction="row" alignItems="center" gap={1} mb={0.5}>
+                {/* TYPE BADGE */}
+                {isPractice ? (
+                    <Chip 
+                        label="AI Practice" 
+                        size="small" 
+                        icon={<MicIcon style={{ fontSize: 14 }} />}
+                        sx={{ height: 20, fontSize: 10, bgcolor: "rgba(139, 92, 246, 0.2)", color: "#a78bfa" }}
+                    />
+                ) : (
+                    <Chip 
+                        label="Upload" 
+                        size="small" 
+                        icon={<CloudUploadIcon style={{ fontSize: 14 }} />}
+                        sx={{ height: 20, fontSize: 10, bgcolor: "rgba(56, 189, 248, 0.2)", color: "#38bdf8" }}
+                    />
+                )}
+            </Stack>
+
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                fontSize: 16,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                color: "#F8FAFC"
+              }}
+            >
+              {interview.title || "Untitled Session"}
+            </Typography>
+            <Typography
+              sx={{ color: "#64748B", fontSize: 13, mt: 0.3 }}
+              noWrap
+            >
+              {interview.company} • {interview.position}
+            </Typography>
+          </Box>
+          <Chip
+            size="small"
+            label={`${scoreOutOfTen}/10`}
+            sx={{
+              bgcolor: Number(scoreOutOfTen) > 7 ? "rgba(34,197,94,.18)" : "rgba(251, 191, 36, 0.18)",
+              color: Number(scoreOutOfTen) > 7 ? "#4ADE80" : "#fbbf24",
+              fontWeight: 700,
+              fontSize: 12,
+              borderRadius: 999,
+            }}
+          />
+        </Box>
+
+        {/* Date Row */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, mb: 1.75 }}>
+          <CalendarToday sx={{ fontSize: 15, color: "#94A3B8" }} />
+          <Typography sx={{ fontSize: 13, color: "#94A3B8" }}>
+            {interview.date}
+          </Typography>
+          <Typography sx={{ fontSize: 13, color: "#475569" }}>•</Typography>
+          <Typography sx={{ fontSize: 13, color: "#94A3B8" }}>
+            ⏱ {interview.duration || "N/A"}
+          </Typography>
+        </Box>
+
+        {/* Info Grid (Conditional) */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 1.25,
+            mb: 2.25,
+            p: 1.5,
+            borderRadius: 2,
+            bgcolor: "rgba(15,23,42,0.9)",
+            border: "1px solid rgba(148,163,184,0.25)",
+          }}
+        >
+          <Box>
+            <Typography sx={{ fontSize: 11, textTransform: "uppercase", color: "#64748B" }}>
+              Company
+            </Typography>
+            <Typography sx={{ fontSize: 13.5, color: "#E2E8F0", mt: 0.25 }}>
+              {interview.company || "—"}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography sx={{ fontSize: 11, textTransform: "uppercase", color: "#64748B" }}>
+              Position
+            </Typography>
+            <Typography sx={{ fontSize: 13.5, color: "#E2E8F0", mt: 0.25 }}>
+              {interview.position || "—"}
+            </Typography>
+          </Box>
+          
+          {/* Conditional Fields based on Type */}
+          {isPractice ? (
+             <>
+               <Box>
+                <Typography sx={{ fontSize: 11, textTransform: "uppercase", color: "#64748B" }}>
+                  Round
+                </Typography>
+                <Typography sx={{ fontSize: 13.5, color: "#E2E8F0", mt: 0.25 }}>
+                  {interview.roundNumber ? `Round ${interview.roundNumber}` : "1"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography sx={{ fontSize: 11, textTransform: "uppercase", color: "#64748B" }}>
+                  Difficulty
+                </Typography>
+                <Box display="flex" alignItems="center" gap={0.5} mt={0.25}>
+                    <BoltIcon sx={{ fontSize: 14, color: "#fbbf24" }} />
+                    <Typography sx={{ fontSize: 13.5, color: "#E2E8F0", textTransform: 'capitalize' }}>
+                     {interview.difficulty || "Adaptive"}
+                    </Typography>
+                </Box>
+              </Box>
+             </>
+          ) : (
+            <>
+              <Box>
+                <Typography sx={{ fontSize: 11, textTransform: "uppercase", color: "#64748B" }}>
+                  File Size
+                </Typography>
+                <Typography sx={{ fontSize: 13.5, color: "#E2E8F0", mt: 0.25 }}>
+                  {interview.fileSize || "—"}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography sx={{ fontSize: 11, textTransform: "uppercase", color: "#64748B" }}>
+                  Duration
+                </Typography>
+                <Typography sx={{ fontSize: 13.5, color: "#E2E8F0", mt: 0.25 }}>
+                  {interview.duration || "—"}
+                </Typography>
+              </Box>
+            </>
+          )}
+        </Box>
+
+        {/* Metrics Chart Header */}
+        <Typography
+          variant="subtitle2"
+          sx={{
+            color: "#CBD5E1",
+            fontWeight: 700,
+            fontSize: 13.5,
+            display: "flex",
+            alignItems: "center",
+            gap: 0.75,
+            mb: 0.75,
+          }}
+        >
+          <BarChart sx={{ fontSize: 18, color: "#38BDF8" }} />
+          Performance Breakdown
+        </Typography>
+
+        {interview.performance.length > 0 ? (
+          <Box sx={{ mt: 0.25 }}>
+            {interview.performance.slice(0, 3).map((m) => (
+              <MetricRow
+                key={m.category}
+                label={m.category}
+                score={Number(m.score)}
+              />
+            ))}
+          </Box>
+        ) : (
+          <Typography
+            sx={{
+              fontSize: 12,
+              color: "#64748B",
+              fontStyle: "italic",
+              mt: 0.5,
+            }}
+          >
+            Processing or no metrics available yet.
+          </Typography>
+        )}
+
+        {/* AI Insight Snippet */}
+        <Paper
+          elevation={0}
+          sx={{
+            mt: 1.75,
+            p: 1.25,
+            bgcolor: "rgba(20,184,166,.07)",
+            borderRadius: 2,
+            border: "1px solid rgba(20,184,166,.18)",
+          }}
+        >
+          <Chip
+            size="small"
+            label="AI Emotion Analysis"
+            sx={{
+              bgcolor: "rgba(20,184,166,.16)",
+              color: "#22C55E",
+              fontSize: 11,
+              mb: 0.5,
+            }}
+          />
+          <Typography
+            variant="body2"
+            sx={{ fontSize: 12.5, color: "#9BD8C9", mb: 0.25 }}
+          >
+            Detected <b>{formattedEmotion}</b> tone.
+          </Typography>
+          <Typography sx={{ fontSize: 11.5, color: "#6EE7B7" }}>
+            Confidence: {Math.round(interview.aiConfidence) || 0}%
+          </Typography>
+        </Paper>
+      </CardContent>
+
+      <CardActions sx={{ px: 2.75, pb: 2.5, pt: 0.5, gap: 1 }}>
+        <Button
+          fullWidth
+          startIcon={<PlayCircleOutline />}
+          variant="outlined"
+          onClick={onViewDetails}
+          sx={{
+            borderColor: "rgba(96,165,250,.7)",
+            color: "#93C5FD",
+            borderRadius: 2,
+            fontSize: 13,
+            textTransform: "none",
+            "&:hover": {
+              borderColor: "#60A5FA",
+              bgcolor: "rgba(37,99,235,.12)",
+            },
+          }}
+        >
+          View Details
+        </Button>
+        <Button
+          fullWidth
+          startIcon={<DownloadIcon />}
+          variant="contained"
+          onClick={() => handleExportPDF(interview)}
+          sx={{
+            bgcolor: "#2563EB",
+            borderRadius: 2,
+            fontSize: 13,
+            textTransform: "none",
+            "&:hover": { bgcolor: "#1D4ED8" },
+          }}
+        >
+          Export
+        </Button>
+      </CardActions>
+    </Card>
+  );
+};
+
+// --- Main Page Component ---
 const UserProfile: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [interviews, setInterviews] = useState<Interview[]>([]);
@@ -252,143 +516,116 @@ const UserProfile: React.FC = () => {
         setLoading(false);
         return;
       }
+
       const userId = currentUser.uid;
-      try {
-        const userRef = doc(db, "users", userId);
-        const userSnap = await getDoc(userRef);
+      const userRef = doc(db, "users", userId);
+      const userSnap = await getDoc(userRef);
 
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            firstName: "New",
-            lastName: "User",
-            email: currentUser.email || "unknown@email.com",
-            jobTitle: "Candidate",
-            location: "Unknown",
-            education: "Information Technology",
-            avatarUrl: "",
-          });
-        }
-
-        const userData = (await getDoc(userRef)).data()!;
-        const interviewsRef = collection(userRef, "interviews");
-        const interviewsSnap = await getDocs(interviewsRef);
-
-        const normalizeArray = (field: any): string[] => {
-          if (Array.isArray(field)) return field;
-          if (typeof field === "object" && field !== null) return Object.values(field);
-          return [];
-        };
-
-        const interviewsList: Interview[] = interviewsSnap.docs.map((docSnap) => {
-          const d = docSnap.data() as any;
-          const feedback = d.feedback || {};
-
-          const interviewDate = d.createdAt?.seconds
-            ? new Date(d.createdAt.seconds * 1000).toLocaleDateString()
-            : "Unknown";
-
-          const rawPerformance =
-            d.performanceBreakdown ||
-            d.performance_breakdown ||
-            feedback.performanceBreakdown ||
-            feedback.performance ||
-            [];
-
-          const performance: PerformanceItem[] = Array.isArray(rawPerformance)
-            ? rawPerformance.map((p: any) => ({
-              category: p.category || "Unknown Metric",
-              score: parseFloat(p.score) || 0,
-              summary: p.summary || "",
-              suggestions: Array.isArray(p.suggestions) ? p.suggestions : [],
-            }))
-            : [];
-
-          const keyStrengths = normalizeArray(d.keyStrengths || feedback.keyStrengths);
-          const areasForImprovement = normalizeArray(
-            d.areasForImprovement || feedback.areasForImprovement
-          );
-          const immediateActionItems = normalizeArray(
-            d.immediateActionItems || feedback.immediateActionItems
-          );
-          const longTermDevelopment = normalizeArray(
-            d.longTermDevelopment || feedback.longTermDevelopment
-          );
-
-          const topEmotion =
-            Array.isArray(d.allEmotions) && d.allEmotions.length > 0
-              ? d.allEmotions.reduce((max: any, curr: any) =>
-                curr.score > max.score ? curr : max
-              )
-              : { label: d.dominantEmotion || "neutral" };
-
-          return {
-            id: docSnap.id,
-            title:
-              d.fileName && typeof d.fileName === "string"
-                ? `Interview_${d.fileName.replace(".mp4", "")}`
-                : d.title || `Interview with ${d.company || "Unknown"}`,
-            company: (userData.company as string) || "Microsoft",
-            position: (userData.jobTitle as string) || "Candidate",
-            fileName: d.fileName || "Unknown",
-            fileSize: d.fileSize || "Unknown",
-            date: interviewDate,
-            duration: d.duration || "N/A",
-            grade: d.grade || "N/A",
-            score: typeof d.overallScore === "number" ? d.overallScore : feedback.aiConfidence || 0,
-            performance,
-            keyStrengths,
-            areasForImprovement,
-            immediateActionItems,
-            longTermDevelopment,
-            emotionAnalysis: (topEmotion as any).label || "neutral",
-            aiConfidence: feedback.aiConfidence || d.aiConfidence || d.emotionConfidence || 0,
-            speechQuality: d.speechQuality || feedback.speechQuality || 0,
-            performanceLevel: d.performanceLevel || feedback.performanceLevel || "Unknown",
-            transcript: d.transcript || feedback.transcript || "",
-          };
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          firstName: "New",
+          lastName: "User",
+          email: currentUser.email,
+          jobTitle: "Candidate",
+          location: "Unknown",
+          education: "N/A",
+          avatarUrl: "",
         });
-
-        setUser({
-          name: `${userData.firstName} ${userData.lastName}`,
-          email: userData.email,
-          role: userData.jobTitle,
-          bio: `${userData.education} student based in ${userData.location}.`,
-         avatarUrl: (userData.avatarUrl as string) || "https://www.immerse.education/wp-content/uploads/2022/02/Computer-Science.jpg",
-          pastInterviews: interviewsList,
-        });
-
-        setInterviews(interviewsList);
-      } catch (err) {
-        console.error("❌ Error fetching Firestore data:", err);
-      } finally {
-        setLoading(false);
       }
+
+      const userData = (await getDoc(userRef)).data()!;
+
+      // 1. Fetch Uploaded Interviews
+      const interviewsRef = collection(userRef, "interviews");
+      const uploadsSnap = await getDocs(interviewsRef);
+
+      const uploadsList: Interview[] = uploadsSnap.docs.map((d) => {
+         const data = d.data();
+         return {
+            id: d.id,
+            type: "upload",
+            title: data.fileName || "Uploaded Interview",
+            company: "Company",
+            position: "Candidate",
+            fileName: data.fileName,
+            fileSize: data.fileSize,
+            date: data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleDateString() : "Recently",
+            timestamp: data.createdAt ? data.createdAt.seconds : 0,
+            duration: "00:45", // Placeholder unless you store duration in top level
+            grade: "B+",
+            score: data.summary?.overallScore || 75,
+            performance: [], // Populate if your upload logic saves this structure
+            keyStrengths: data.summary?.strengths || [],
+            areasForImprovement: data.summary?.weaknesses || [],
+            immediateActionItems: [],
+            longTermDevelopment: [],
+            emotionAnalysis: "neutral", // Populate from analysis if available
+            aiConfidence: 85,
+            speechQuality: 80,
+            performanceLevel: "intermediate",
+        };
+      });
+
+      // 2. Fetch Practice Sessions
+      const practiceRef = collection(userRef, "practiceSessions");
+      const practiceSnap = await getDocs(practiceRef);
+
+      const practiceList: Interview[] = practiceSnap.docs.map((d) => {
+        const data = d.data();
+        const summary = data.summary || {};
+        
+        // Map Score summary to Performance Items for the chart
+        const mockPerformance: PerformanceItem[] = [
+            { category: "Technical", score: summary.technicalScore || summary.overallScore || 0 },
+            { category: "Communication", score: summary.communicationScore || (summary.overallScore ? summary.overallScore - 5 : 0) },
+            { category: "Behavioral", score: summary.behavioralScore || summary.overallScore || 0 }
+        ];
+
+        return {
+            id: d.id,
+            type: "practice",
+            title: `${data.role} (Round ${data.roundNumber || 1})`,
+            company: "AI Mock Interview",
+            position: data.role,
+            roundNumber: data.roundNumber,
+            difficulty: data.config?.difficulty,
+            date: data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleDateString() : "Recently",
+            timestamp: data.createdAt ? data.createdAt.seconds : 0,
+            duration: `${data.questions?.length || 8} Questions`,
+            grade: summary.overallScore > 85 ? "A" : "B",
+            score: summary.overallScore || 0,
+            performance: mockPerformance,
+            keyStrengths: summary.strengths || [],
+            areasForImprovement: summary.weaknesses || [],
+            immediateActionItems: summary.recommendedImprovements || [],
+            longTermDevelopment: [],
+            emotionAnalysis: "focused", 
+            aiConfidence: 90,
+            speechQuality: 95,
+            performanceLevel: "Advanced",
+        };
+      });
+
+      // 3. Merge and Sort (Newest First)
+      const allInterviews = [...uploadsList, ...practiceList].sort((a, b) => b.timestamp - a.timestamp);
+
+      setUser({
+        name: `${userData.firstName} ${userData.lastName}`,
+        email: userData.email,
+        role: userData.jobTitle,
+        bio: `${userData.education} student based in ${userData.location}.`,
+        avatarUrl: userData.avatarUrl || "https://www.immerse.education/wp-content/uploads/2022/02/Computer-Science.jpg",
+        pastInterviews: allInterviews,
+      });
+
+      setInterviews(allInterviews);
+      setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  if (loading)
-    return (
-      <Shell>
-
-
-        <Box sx={{ height: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Typography color="#94A3B8">Loading profile...</Typography>
-        </Box>
-      </Shell>
-    );
-
-  if (!user)
-    return (
-      <Shell>
-
-
-        <Box sx={{ height: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Typography color="#94A3B8">No user profile found. Please log in again.</Typography>
-        </Box>
-      </Shell>
-    );
+  if (loading || !user) return null;
 
   const filteredInterviews = interviews.filter((i) =>
     i.title.toLowerCase().includes(search.toLowerCase())
@@ -396,37 +633,24 @@ const UserProfile: React.FC = () => {
 
   return (
     <Shell>
-      <SectionHeader title="Profile Dashboard" subt="Manage your account and track your progress" />
+      <SectionHeader
+        title="Profile Dashboard"
+        subt="Manage your account and track your progress"
+      />
 
-      {/* Search and Tabs */}
-      <Box
-        sx={{
-          px: { xs: 2.5, md: 4 },
-          mt: 1,
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-          flexWrap: "wrap",
-        }}
-      >
-        <ButtonGroup
-          sx={{
-            borderRadius: 2,
-            overflow: "hidden",
-            bgcolor: "rgba(148,163,184,0.08)",
-          }}
-        >
+      {/* Search + Tabs */}
+      <Box sx={{ px: 4, mt: 1, display: "flex", alignItems: "center", gap: 2 }}>
+        <ButtonGroup>
           <Button
             onClick={() => setTab("history")}
             sx={{
               px: 3,
               color: tab === "history" ? "#0F172A" : "#94A3B8",
               bgcolor: tab === "history" ? "#14B8A6" : "transparent",
-              "&:hover": { bgcolor: tab === "history" ? "#10a392" : "rgba(148,163,184,0.12)" },
               fontWeight: 700,
             }}
           >
-            Interview History
+            All Activity
           </Button>
           <Button
             onClick={() => setTab("activity")}
@@ -434,17 +658,16 @@ const UserProfile: React.FC = () => {
               px: 3,
               color: tab === "activity" ? "#0F172A" : "#94A3B8",
               bgcolor: tab === "activity" ? "#14B8A6" : "transparent",
-              "&:hover": { bgcolor: tab === "activity" ? "#10a392" : "rgba(148,163,184,0.12)" },
               fontWeight: 700,
             }}
           >
-            Recent Activity
+             Statistics
           </Button>
         </ButtonGroup>
 
-        <Box sx={{ ml: "auto", display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
+        <Box sx={{ ml: "auto", display: "flex", gap: 1.5 }}>
           <TextField
-            placeholder="Search interviews..."
+            placeholder="Search sessions..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             InputProps={{
@@ -458,95 +681,98 @@ const UserProfile: React.FC = () => {
               minWidth: 340,
               "& .MuiOutlinedInput-root": {
                 bgcolor: "#0B1220",
-                borderRadius: 2,
-                fieldset: { borderColor: "rgba(148,163,184,.18)" },
-                "&:hover fieldset": { borderColor: "rgba(148,163,184,.32)" },
-                "&.Mui-focused fieldset": { borderColor: "#14B8A6" },
-                input: { color: "#E2E8F0" },
               },
             }}
           />
+
           <Button
             startIcon={<FilterListIcon />}
-            sx={{
-              bgcolor: "rgba(148,163,184,.12)",
-              color: "#E2E8F0",
-              borderRadius: 2,
-              textTransform: "none",
-              "&:hover": { bgcolor: "rgba(148,163,184,.18)" },
-            }}
+            sx={{ bgcolor: "rgba(148,163,184,.12)", color: "#E2E8F0" }}
           >
             Filter
           </Button>
+
           <Chip
-            label={`${interviews.length} Total Interviews`}
-            sx={{ bgcolor: "#0B1220", color: "#22C55E", borderRadius: 2 }}
+            label={`${interviews.length} Sessions`}
+            sx={{ bgcolor: "#0B1220", color: "#22C55E" }}
           />
         </Box>
       </Box>
 
-      {/* Main Layout */}
+      {/* Main Content Area */}
       <Box
         sx={{
-          px: { xs: 2.5, md: 4 },
+          px: 2,
           py: 3,
           display: "flex",
-          flexWrap: "wrap",
-          gap: 3,
+          flexWrap: "nowrap",
+          alignItems: "flex-start",
+          justifyContent: "flex-start",
+          columnGap: 2,
+          width: "100%",
         }}
       >
-        {/* Left Profile */}
-        <Box sx={{ flex: "1 1 320px", maxWidth: 400 }}>
+        {/* User Profile Sidebar */}
+        <Box sx={{ width: 360, flexShrink: 0 }}>
           <Card
             sx={{
-              bgcolor: "rgba(2,6,23,0.7)",
-              borderRadius: 3,
-              border: "1px solid rgba(148,163,184,.14)",
-              boxShadow: "0 10px 40px rgba(0,0,0,.35)",
+              width: "100%",
+              borderRadius: "24px",
+              backgroundColor: "rgba(15,23,42,0.75)",
+              border: "1px solid rgba(148,163,184,0.15)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+              backdropFilter: "blur(10px)",
+              overflow: "hidden",
             }}
           >
             <Box
               sx={{
-                height: 90,
+                height: 65,
                 background:
-                  "radial-gradient(120px 50px at 20% -10%, rgba(20,184,166,.45), transparent 60%), radial-gradient(160px 60px at 80% -20%, rgba(56,189,248,.35), transparent 60%), linear-gradient(180deg, rgba(2,6,23,.42), rgba(2,6,23,.8))",
-                borderBottom: "1px solid rgba(148,163,184,.14)",
+                  "radial-gradient(120px 50px at 20% -10%, rgba(20,184,166,.35), transparent 60%), radial-gradient(160px 60px at 80% -20%, rgba(56,189,248,.25), transparent 60%), linear-gradient(180deg, rgba(2,6,23,.5), rgba(2,6,23,.85))",
               }}
             />
-            <CardContent sx={{ pt: 0, textAlign: "center" }}>
+
+            <CardContent sx={{ textAlign: "center", px: 3.5 }}>
               <Avatar
                 src={user.avatarUrl}
-                alt={user.name}
                 sx={{
-                  width: 100,
-                  height: 100,
-                  mt: -6,
+                  width: 110,
+                  height: 110,
+                  mt: -7,
                   mx: "auto",
-                  mb: 1.5,
-                  border: "3px solid rgba(51,65,85,.8)",
-                  boxShadow: "0 10px 28px rgba(20,184,166,.22)",
+                  mb: 1.8,
+                  border: "4px solid rgba(51,65,85,.8)",
                 }}
               />
+
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 {user.name}
               </Typography>
-              <Typography sx={{ color: "#9CA3AF", mt: 0.5 }}>{user.role}</Typography>
-              <Typography sx={{ color: "#94A3B8", mt: 1 }}>{user.bio}</Typography>
 
-              <Divider sx={{ my: 2.5, borderColor: "rgba(148,163,184,.14)" }} />
+              <Typography sx={{ color: "#9CA3AF", fontSize: 15, mt: 0.3 }}>
+                {user.role}
+              </Typography>
 
-              <Box sx={{ textAlign: "left", px: 1 }}>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+              <Typography sx={{ color: "#94A3B8", fontSize: 14, mt: 1 }}>
+                {user.bio}
+              </Typography>
+
+              <Divider sx={{ my: 2, borderColor: "rgba(148,163,184,.14)" }} />
+
+              <Box sx={{ textAlign: "left", px: 1, pb: 1 }}>
+                <Box sx={{ display: "flex", gap: 1.2, mb: 1 }}>
                   <Description sx={{ fontSize: 18, color: "#94A3B8" }} />
-                  <Typography variant="body2">{user.email}</Typography>
+                  <Typography variant="body2" sx={{ fontSize: 14 }}>
+                    {user.email}
+                  </Typography>
                 </Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+
+                <Box sx={{ display: "flex", gap: 1.2, mb: 1 }}>
                   <Business sx={{ fontSize: 18, color: "#94A3B8" }} />
-                  <Typography variant="body2">Southeastern Louisiana University</Typography>
-                </Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <CalendarToday sx={{ fontSize: 18, color: "#94A3B8" }} />
-                  <Typography variant="body2">Member since 2025</Typography>
+                  <Typography variant="body2" sx={{ fontSize: 14 }}>
+                    Southeastern Louisiana University
+                  </Typography>
                 </Box>
               </Box>
 
@@ -554,11 +780,12 @@ const UserProfile: React.FC = () => {
                 fullWidth
                 sx={{
                   mt: 2.5,
+                  height: 48,
+                  fontSize: 15,
                   background: "linear-gradient(90deg,#14B8A6,#10B981)",
                   color: "#021015",
+                  borderRadius: "12px",
                   fontWeight: 700,
-                  borderRadius: 2,
-                  "&:hover": { boxShadow: "0 12px 28px rgba(20,184,166,.22)" },
                 }}
               >
                 Edit Profile
@@ -567,169 +794,35 @@ const UserProfile: React.FC = () => {
           </Card>
         </Box>
 
-        {/* Right Interview Cards */}
+        {/* Combined List Area */}
         <Box
           sx={{
             flex: "3 1 600px",
             display: "flex",
             flexWrap: "wrap",
-            gap: 3,
-            justifyContent: "flex-start",
+            gap: 2.5,
           }}
         >
-          {filteredInterviews.map((interview) => (
-            <Card
-              key={interview.id}
-              sx={{
-                flex: "1 1 360px",
-                bgcolor: "#0D1626",
-                borderRadius: 3,
-                border: "1px solid rgba(148,163,184,.12)",
-                boxShadow: "0 10px 38px rgba(0,0,0,.35)",
-                transition: "transform .18s ease",
-                "&:hover": { transform: "translateY(-2px)" },
-              }}
-            >
-              <CardContent sx={{ pb: 1.5 }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 700,
-                      maxWidth: "80%",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {interview.title}
-                  </Typography>
-                  <Chip
-                    size="small"
-                    label={`${(interview.score / 10).toFixed(1)}/10`}
-                    sx={{ bgcolor: "rgba(34,197,94,.15)", color: "#34D399", fontWeight: 700 }}
-                  />
-                </Box>
-
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1 }}>
-                  <CalendarToday sx={{ fontSize: 16, color: "#94A3B8" }} />
-                  <Typography variant="body2" sx={{ color: "#94A3B8" }}>
-                    {interview.date}
-                  </Typography>
-                  <Typography sx={{ color: "#475569" }}>•</Typography>
-                  <Typography variant="body2" sx={{ color: "#94A3B8" }}>
-                    ⏱ {interview.duration}
-                  </Typography>
-                </Box>
-
-                {/* Performance */}
-                <Typography
-                  variant="subtitle2"
-                  sx={{
-                    color: "#CBD5E1",
-                    mt: 2,
-                    mb: 0.5,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    fontWeight: 700,
-                  }}
-                >
-                  <BarChart sx={{ fontSize: 18, color: "#38BDF8" }} />
-                  Performance Breakdown
-                </Typography>
-
-                {interview.performance.length > 0 ? (
-                  <Box sx={{ mt: 0.5 }}>
-                    {interview.performance.slice(0, 4).map((m) => (
-                      <MetricRow key={m.category} label={m.category} score={Number(m.score)} />
-                    ))}
-                  </Box>
-                ) : (
-                  <Typography variant="body2" sx={{ color: "#64748B", fontStyle: "italic", mt: 1 }}>
-                    No performance data available.
-                  </Typography>
-                )}
-
-                {/* Strengths */}
-                <Typography sx={{ mt: 2, fontWeight: 700 }}>Key Insights</Typography>
-                <Box sx={{ mt: 0.5 }}>
-                  {(interview.keyStrengths ?? []).slice(0, 2).map((s, i) => (
-                    <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1, color: "#9CA3AF" }}>
-                      <span style={{ color: "#22C55E" }}>•</span>
-                      <Typography variant="body2">{s}</Typography>
-                    </Box>
-                  ))}
-                  {interview.keyStrengths.length > 2 && (
-                    <Typography variant="body2" sx={{ color: "#22C55E", mt: 0.5 }}>
-                      +{interview.keyStrengths.length - 2} more insights
-                    </Typography>
-                  )}
-                </Box>
-
-                {/* Emotion */}
-                <Paper
-                  elevation={0}
-                  sx={{
-                    mt: 1.5,
-                    p: 1.25,
-                    bgcolor: "rgba(20,184,166,.07)",
-                    border: "1px solid rgba(20,184,166,.16)",
-                    borderRadius: 2,
-                  }}
-                >
-                  <Chip
-                    size="small"
-                    label="AI Emotion Analysis"
-                    sx={{ bgcolor: "rgba(20,184,166,.18)", color: "#22C55E", mb: 0.5 }}
-                  />
-                  <Typography variant="body2" sx={{ color: "#9BD8C9" }}>
-                    {interview.emotionAnalysis
-                      ? `${interview.emotionAnalysis.charAt(0).toUpperCase() +
-                      interview.emotionAnalysis.slice(1)} throughout`
-                      : "Emotion summary unavailable"}
-                  </Typography>
-                </Paper>
-              </CardContent>
-
-              <CardActions sx={{ px: 2, pb: 2, pt: 0, gap: 1 }}>
-                <Button
-                  fullWidth
-                  startIcon={<PlayCircleOutline />}
-                  variant="outlined"
-                  onClick={() =>
-                    navigate("/feedback", {
-                      state: { userId: auth.currentUser?.uid, interviewId: interview.id },
+          {filteredInterviews.length === 0 ? (
+             <Box sx={{ width: '100%', textAlign: 'center', mt: 4 }}>
+                <Typography sx={{ color: '#64748B' }}>No activity found.</Typography>
+             </Box>
+          ) : (
+            filteredInterviews.map((interview) => (
+                <InterviewCard
+                key={interview.id}
+                interview={interview}
+                onViewDetails={() =>
+                    navigate("/feedback", { 
+                        state: { 
+                            interviewId: interview.id,
+                            source: interview.type === 'practice' ? 'practice' : 'upload' 
+                        } 
                     })
-                  }
-                  sx={{
-                    borderColor: "rgba(96,165,250,.6)",
-                    color: "#93C5FD",
-                    borderRadius: 2,
-                    textTransform: "none",
-                    "&:hover": { borderColor: "#60A5FA", bgcolor: "rgba(59,130,246,.08)" },
-                  }}
-                >
-                  View Details
-                </Button>
-                <Button
-                  fullWidth
-                  startIcon={<DownloadIcon />}
-                  variant="contained"
-                  sx={{
-                    bgcolor: "#2563EB",
-                    borderRadius: 2,
-                    textTransform: "none",
-                    "&:hover": { bgcolor: "#1D4ED8" },
-                  }}
-                  onClick={() => handleExportPDF(interview)}
-                >
-                  Export
-                </Button>
-
-              </CardActions>
-            </Card>
-          ))}
+                }
+                />
+            ))
+          )}
         </Box>
       </Box>
     </Shell>
