@@ -21,53 +21,57 @@ export const NavigationBar: React.FC = () => {
         py: 0.8,
       }}
     >
-      <Toolbar
-        sx={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr", // left | center | right
-          alignItems: "center",
-          width: "100%",
-          maxWidth: "1300px",
-          mx: "auto",
-          px: 2,
-        }}
-      >
+     <Toolbar
+  sx={{
+    display: "grid",
+    gridTemplateColumns: "1fr auto 1fr",
+    alignItems: "center",
+    width: "100%",
+    px: 2,
+  }}
+>
         {/* ---- LEFT SECTION (Logo) ---- */}
-        <Box
-          display="flex"
-          alignItems="center"
-          gap={1.2}
-          sx={{
-            cursor: "pointer",
-            justifySelf: "start",          // force left alignment in the grid cell
-            justifyContent: "flex-start",  // force content to start inside the box
-          }}
-          onClick={() => navigate("/upload")}
-        >
-          <Brain size={26} color="#14b8a6" />
+        {/* ---- LEFT SECTION (Logo) ---- */}
+<Box
+  display="flex"
+  alignItems="center"
+  gap={1.2}
+  sx={{
+    cursor: "pointer",
+    justifySelf: "start",          // aligns left inside grid cell
+    justifyContent: "flex-start",  // aligns content fully left
+  }}
+  onClick={() => navigate("/upload")}
+>
+  <img 
+    src="/logo.png" 
+    alt="Logo" 
+    style={{ width: 32, height: 32 }} 
+  />
 
-          <Box>
-            <Typography
-              variant="h6"
-              fontWeight={700}
-              sx={{ lineHeight: 1, color: "#fff" }}
-            >
-              Interview <span style={{ color: "#14b8a6" }}>Analyzer</span>
-            </Typography>
+  <Box>
+    <Typography
+      variant="h6"
+      fontWeight={700}
+      sx={{ lineHeight: 1, color: "#fff" }}
+    >
+      Interview <span style={{ color: "#14b8a6" }}>Analyzer</span>
+    </Typography>
 
-            <Typography
-              variant="caption"
-              sx={{
-                color: "#14b8a6",
-                fontWeight: 500,
-                letterSpacing: 1,
-                fontSize: "0.7rem",
-              }}
-            >
-              AI-POWERED INSIGHTS
-            </Typography>
-          </Box>
-        </Box>
+    <Typography
+      variant="caption"
+      sx={{
+        color: "#14b8a6",
+        fontWeight: 500,
+        letterSpacing: 1,
+        fontSize: "0.7rem",
+      }}
+    >
+      AI-POWERED INSIGHTS
+    </Typography>
+  </Box>
+</Box>
+
 
         {/* ---- CENTER SECTION ---- */}
         <Box
