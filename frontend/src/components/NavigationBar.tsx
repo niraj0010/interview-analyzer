@@ -24,7 +24,7 @@ export const NavigationBar: React.FC = () => {
       position="sticky"
       elevation={6}
       sx={{
-        background: "rgba(15,23,42,0.9)", // dark navy
+        background: "rgba(15,23,42,0.9)",
         backdropFilter: "blur(10px)",
         borderBottom: "1px solid rgba(255,255,255,0.05)",
         paddingY: 0.5,
@@ -35,18 +35,17 @@ export const NavigationBar: React.FC = () => {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          maxWidth: "1300px",
-          margin: "0 auto",
-          width: "100%",
+          width: "100%",     // FULL WIDTH NAVBAR
+          paddingLeft: 3,
+          paddingRight: 3,
         }}
       >
         {/* ---- Left: Logo ---- */}
-        <Box display="flex" alignItems="center" gap={1}>
+        <Box display="flex" alignItems="center" gap={1} sx={{ cursor: "pointer" }}
+             onClick={() => navigate("/upload")}>
           <Brain size={28} color="#14b8a6" />
-          <Box
-            sx={{ cursor: "pointer" }}
-            onClick={() => navigate("/upload")}
-          >
+
+          <Box>
             <Typography
               variant="h6"
               fontWeight={700}
@@ -54,6 +53,7 @@ export const NavigationBar: React.FC = () => {
             >
               Interview <span style={{ color: "#14b8a6" }}>Analyzer</span>
             </Typography>
+
             <Typography
               variant="caption"
               sx={{
@@ -68,14 +68,12 @@ export const NavigationBar: React.FC = () => {
           </Box>
         </Box>
 
-        {/* ---- Center: Navigation Links ---- */}
+        {/* ---- Center Nav ---- */}
         <Box
           sx={{
             display: "flex",
             gap: 3,
             alignItems: "center",
-            flexGrow: 1,
-            justifyContent: "center",
           }}
         >
           <Button
@@ -89,16 +87,12 @@ export const NavigationBar: React.FC = () => {
               px: 2.5,
               py: 0.8,
               boxShadow: "0 0 10px rgba(20,184,166,0.6)",
-              "&:hover": {
-                background: "#0d9488",
-                boxShadow: "0 0 12px rgba(20,184,166,0.9)",
-              },
+              "&:hover": { background: "#0d9488" },
             }}
           >
             Home
           </Button>
 
-          {/* ✅ Practice Button → goes to /practice page */}
           <Button
             startIcon={<Mic size={18} />}
             onClick={() => navigate("/practice")}
@@ -139,12 +133,10 @@ export const NavigationBar: React.FC = () => {
           >
             Profile
           </Button>
+
           <Button
             startIcon={<LogOut size={18} />}
-            onClick={() => {
-              // Add Firebase logout here later
-              navigate("/login");
-            }}
+            onClick={() => navigate("/login")}
             sx={{
               color: "#fff",
               background: "rgba(30,41,59,0.8)",
