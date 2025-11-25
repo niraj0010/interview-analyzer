@@ -1,19 +1,10 @@
 import React from "react";
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Box,
-  Button,
-} from "@mui/material";
-import {
-  Brain,
-  Home,
-  Mic,
-  LayoutDashboard,
-  User,
-  LogOut,
-} from "lucide-react";
+import AppBar from "@mui/material/AppBar";
+import Toolbar from "@mui/material/Toolbar";
+import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import { Brain, Home, Mic, LayoutDashboard, User, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export const NavigationBar: React.FC = () => {
@@ -27,7 +18,7 @@ export const NavigationBar: React.FC = () => {
         background: "rgba(15,23,42,0.9)",
         backdropFilter: "blur(10px)",
         borderBottom: "1px solid rgba(255,255,255,0.05)",
-        paddingY: 0.5,
+        py: 0.8,
       }}
     >
       <Toolbar
@@ -35,15 +26,22 @@ export const NavigationBar: React.FC = () => {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          width: "100%",     // FULL WIDTH NAVBAR
-          paddingLeft: 3,
-          paddingRight: 3,
+          width: "100%",
+          maxWidth: "1300px",
+          mx: "auto",
+          px: 2,
         }}
       >
         {/* ---- Left: Logo ---- */}
-        <Box display="flex" alignItems="center" gap={1} sx={{ cursor: "pointer" }}
-             onClick={() => navigate("/upload")}>
-          <Brain size={28} color="#14b8a6" />
+        <Box
+          display="flex"
+          alignItems="center"
+          gap={1.2}
+          minWidth="230px"
+          sx={{ cursor: "pointer" }}
+          onClick={() => navigate("/upload")}
+        >
+          <Brain size={26} color="#14b8a6" />
 
           <Box>
             <Typography
@@ -68,12 +66,14 @@ export const NavigationBar: React.FC = () => {
           </Box>
         </Box>
 
-        {/* ---- Center Nav ---- */}
+        {/* ---- Center: Navigation ---- */}
         <Box
           sx={{
             display: "flex",
-            gap: 3,
             alignItems: "center",
+            justifyContent: "center",
+            gap: 3,
+            flex: 1,
           }}
         >
           <Button
@@ -84,8 +84,8 @@ export const NavigationBar: React.FC = () => {
               color: "#fff",
               fontWeight: 600,
               borderRadius: "10px",
-              px: 2.5,
-              py: 0.8,
+              px: 2.8,
+              py: 0.9,
               boxShadow: "0 0 10px rgba(20,184,166,0.6)",
               "&:hover": { background: "#0d9488" },
             }}
@@ -121,7 +121,7 @@ export const NavigationBar: React.FC = () => {
         </Box>
 
         {/* ---- Right: Profile / Logout ---- */}
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2.2} minWidth="200px">
           <Button
             startIcon={<User size={18} />}
             onClick={() => navigate("/profile")}
@@ -142,6 +142,7 @@ export const NavigationBar: React.FC = () => {
               background: "rgba(30,41,59,0.8)",
               borderRadius: "10px",
               textTransform: "none",
+              px: 2.4,
               "&:hover": {
                 background: "rgba(51,65,85,0.9)",
                 color: "#14b8a6",

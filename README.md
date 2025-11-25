@@ -11,12 +11,17 @@ This backend manages audio/video uploads, links them to users (via Firebase Auth
 - 
 - **Firebase Auth** — User authentication (frontend)  
 - **Local Storage** — Saves uploads to `/uploads`  
-- *(Upcoming)* Whisper / XLSR / Gemini AI integration
+- AI Pipeline -  Whisper / XLSR / Gemini AI integration
 
 ---
+To initiate Frontend: 
+cd frontend
+npm i
+npm run dev
 
 ## Create and activate virtual environment
-
+To run backend: 
+cd backend. 
 python -m venv venv
 # Activate
 venv\Scripts\activate      # Windows
