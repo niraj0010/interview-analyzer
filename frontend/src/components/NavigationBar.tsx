@@ -23,8 +23,8 @@ export const NavigationBar: React.FC = () => {
     >
       <Toolbar
         sx={{
-          display: "flex",
-          justifyContent: "space-between",
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr", // left | center | right
           alignItems: "center",
           width: "100%",
           maxWidth: "1300px",
@@ -32,13 +32,16 @@ export const NavigationBar: React.FC = () => {
           px: 2,
         }}
       >
-        {/* ---- Left: Logo ---- */}
+        {/* ---- LEFT SECTION (Logo) ---- */}
         <Box
           display="flex"
           alignItems="center"
           gap={1.2}
-          minWidth="230px"
-          sx={{ cursor: "pointer" }}
+          sx={{
+            cursor: "pointer",
+            justifySelf: "start",          // force left alignment in the grid cell
+            justifyContent: "flex-start",  // force content to start inside the box
+          }}
           onClick={() => navigate("/upload")}
         >
           <Brain size={26} color="#14b8a6" />
@@ -66,14 +69,14 @@ export const NavigationBar: React.FC = () => {
           </Box>
         </Box>
 
-        {/* ---- Center: Navigation ---- */}
+        {/* ---- CENTER SECTION ---- */}
         <Box
           sx={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             gap: 3,
-            flex: 1,
+            justifySelf: "center", // perfectly centered in grid cell
           }}
         >
           <Button
@@ -120,8 +123,15 @@ export const NavigationBar: React.FC = () => {
           </Button>
         </Box>
 
-        {/* ---- Right: Profile / Logout ---- */}
-        <Box display="flex" alignItems="center" gap={2.2} minWidth="200px">
+        {/* ---- RIGHT SECTION ---- */}
+        <Box
+          display="flex"
+          alignItems="center"
+          gap={2.2}
+          sx={{
+            justifySelf: "end", // fully right aligned
+          }}
+        >
           <Button
             startIcon={<User size={18} />}
             onClick={() => navigate("/profile")}
