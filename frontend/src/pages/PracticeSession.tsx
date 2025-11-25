@@ -9,16 +9,15 @@ import {
   Paper,
   Stack,
   Typography,
-  IconButton,
 } from "@mui/material";
-import MicIcon from "@mui/icons-material/Mic"; // Used as fallback icon
+import MicIcon from "@mui/icons-material/Mic";
 import StopCircleIcon from "@mui/icons-material/StopCircle";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import BoltIcon from "@mui/icons-material/Bolt"; 
-import CenterFocusStrongIcon from "@mui/icons-material/CenterFocusStrong"; 
+import BoltIcon from "@mui/icons-material/Bolt";
+import CenterFocusStrongIcon from "@mui/icons-material/CenterFocusStrong";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
 
 import { useLocation, useNavigate } from "react-router-dom";
@@ -78,35 +77,35 @@ export default function PracticeSession() {
   // --- 1. Initialize Camera Stream (Run on mount) ---
   useEffect(() => {
     const startCamera = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 1280, height: 720 }, // HD Preference
-                audio: true 
-            });
-            streamRef.current = stream;
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-            }
-            setCameraError(false);
-        } catch (err) {
-            console.error("Camera access denied:", err);
-            setCameraError(true); // Fallback to audio-only UI if needed
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720 },
+          audio: true,
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
         }
+        setCameraError(false);
+      } catch (err) {
+        console.error("Camera access denied:", err);
+        setCameraError(true);
+      }
     };
 
     startCamera();
 
     // Cleanup on unmount
     return () => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-        }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
     };
   }, []);
 
   // --- Initialize questions ---
   useEffect(() => {
-    if (!uid) return; 
+    if (!uid) return;
     if (startedRef.current) return;
 
     if (initialSessionId && initialQuestions.length > 0) {
@@ -164,7 +163,7 @@ export default function PracticeSession() {
     }
   };
 
-  // --- 2. Recording Controls (Updated for Video) ---
+  // --- Recording Controls ---
   const startRecording = async () => {
     try {
       setBlob(null);
@@ -175,17 +174,16 @@ export default function PracticeSession() {
       // Use the existing stream if available, otherwise try to get it again
       let stream = streamRef.current;
       if (!stream || !stream.active) {
-          try {
-             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-             streamRef.current = stream;
-             if(videoRef.current) videoRef.current.srcObject = stream;
-          } catch (e) {
-             alert("Could not start camera for recording.");
-             return;
-          }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          streamRef.current = stream;
+          if (videoRef.current) videoRef.current.srcObject = stream;
+        } catch (e) {
+          alert("Could not start camera for recording.");
+          return;
+        }
       }
 
-      // Initialize MediaRecorder
       const r = new MediaRecorder(stream!);
       chunksRef.current = [];
 
@@ -194,10 +192,8 @@ export default function PracticeSession() {
       };
 
       r.onstop = () => {
-        // Save as video/webm
         const b = new Blob(chunksRef.current, { type: "video/webm" });
         setBlob(b);
-        // We DO NOT stop the stream tracks here, so the preview keeps working
       };
 
       mediaRecorderRef.current = r;
@@ -233,7 +229,6 @@ export default function PracticeSession() {
       fd.append("questionIndex", String(index));
       fd.append("question", question);
       fd.append("skipped", "false");
-      // Upload as .webm (works for video too)
       if (blob) fd.append("file", blob, `q${index + 1}.webm`);
 
       const res = await fetch("http://127.0.0.1:8000/practice/answer", {
@@ -287,6 +282,35 @@ export default function PracticeSession() {
     }
   };
 
+  // --- NEW: Back navigation ---
+  const goBackOne = () => {
+    if (index === 0) return;
+    if (phase === "RECORDING" || phase === "PROCESSING_ANSWER" || phase === "FINALIZING") return;
+
+    stopTimer();
+    setBlob(null);
+    setPhase("IDLE");
+    setIndex((i) => Math.max(0, i - 1));
+  };
+
+  // --- NEW: Click bubble to jump to previous question ---
+  const handleBubbleClick = (targetIndex: number) => {
+    // Only allow jumping to previous or current questions, and only when not busy
+    if (
+      targetIndex > index ||
+      phase === "RECORDING" ||
+      phase === "PROCESSING_ANSWER" ||
+      phase === "FINALIZING"
+    ) {
+      return;
+    }
+
+    stopTimer();
+    setBlob(null);
+    setPhase("IDLE");
+    setIndex(targetIndex);
+  };
+
   const finish = async () => {
     if (!uid || !sessionId) return;
     setPhase("FINALIZING");
@@ -294,14 +318,16 @@ export default function PracticeSession() {
       const fd = new FormData();
       fd.append("sessionId", sessionId);
       fd.append("uid", uid);
-      const res = await fetch("http://127.0.0.1:8000/practice/finish", { method: "POST", body: fd });
+      const res = await fetch("http://127.0.0.1:8000/practice/finish", {
+        method: "POST",
+        body: fd,
+      });
       if (!res.ok) throw new Error(await res.text());
-      
-      // Stop Camera before leaving
+
       if (streamRef.current) {
-          streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current.getTracks().forEach((t) => t.stop());
       }
-      
+
       navigate("/feedback", {
         state: { userId: uid, interviewId: sessionId, source: "practice", role: role },
       });
@@ -325,30 +351,54 @@ export default function PracticeSession() {
           <Paper sx={{ p: 2, mb: 3, bgcolor: "#132030", borderRadius: "12px" }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
               <Box>
+                {/* NEW Back button */}
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={goBackOne}
+                  disabled={index === 0 || phase !== "IDLE"}
+                  sx={{
+                    mb: 1,
+                    color: index === 0 || phase !== "IDLE" ? "#64748b" : "#e2e8f0",
+                    textTransform: "none",
+                    px: 0,
+                  }}
+                >
+                  ← Back to previous question
+                </Button>
+
                 <Stack direction="row" alignItems="center" gap={1.5}>
-                     <Typography variant="h6">
-                        Question {Math.min(index + 1, MAX)} of {MAX}
-                    </Typography>
-                    <Chip 
-                        label={`Round ${roundNumber}`} 
-                        size="small" 
-                        sx={{ bgcolor: "#3b82f6", color: "white", fontWeight: "bold", height: 24, fontSize: "0.75rem" }} 
-                    />
-                </Stack>
-                <Typography fontSize={14} sx={{ opacity: 0.7, mt: 0.5 }}>Role: {role}</Typography>
-                
-                <Stack direction="row" spacing={1} mt={1.5}>
-                  <Chip 
-                    icon={<BoltIcon style={{fontSize: 16}} />}
-                    label={`Difficulty: ${config.difficulty}`} 
-                    size="small" 
-                    sx={{ bgcolor: "#334155", color: "#94a3b8", textTransform: 'capitalize' }}
+                  <Typography variant="h6">
+                    Question {Math.min(index + 1, MAX)} of {MAX}
+                  </Typography>
+                  <Chip
+                    label={`Round ${roundNumber}`}
+                    size="small"
+                    sx={{
+                      bgcolor: "#3b82f6",
+                      color: "white",
+                      fontWeight: "bold",
+                      height: 24,
+                      fontSize: "0.75rem",
+                    }}
                   />
-                  <Chip 
-                    icon={<CenterFocusStrongIcon style={{fontSize: 16}} />}
-                    label={`Focus: ${config.focus}`} 
-                    size="small" 
-                    sx={{ bgcolor: "#334155", color: "#94a3b8", textTransform: 'capitalize' }}
+                </Stack>
+                <Typography fontSize={14} sx={{ opacity: 0.7, mt: 0.5 }}>
+                  Role: {role}
+                </Typography>
+
+                <Stack direction="row" spacing={1} mt={1.5}>
+                  <Chip
+                    icon={<BoltIcon style={{ fontSize: 16 }} />}
+                    label={`Difficulty: ${config.difficulty}`}
+                    size="small"
+                    sx={{ bgcolor: "#334155", color: "#94a3b8", textTransform: "capitalize" }}
+                  />
+                  <Chip
+                    icon={<CenterFocusStrongIcon style={{ fontSize: 16 }} />}
+                    label={`Focus: ${config.focus}`}
+                    size="small"
+                    sx={{ bgcolor: "#334155", color: "#94a3b8", textTransform: "capitalize" }}
                   />
                 </Stack>
               </Box>
@@ -364,7 +414,13 @@ export default function PracticeSession() {
             <LinearProgress
               variant="determinate"
               value={progress}
-              sx={{ mt: 2, borderRadius: 5, height: 8, bgcolor: "#1e293b", "& .MuiLinearProgress-bar": { bgcolor: "#0d9488" } }}
+              sx={{
+                mt: 2,
+                borderRadius: 5,
+                height: 8,
+                bgcolor: "#1e293b",
+                "& .MuiLinearProgress-bar": { bgcolor: "#0d9488" },
+              }}
             />
           </Paper>
 
@@ -381,129 +437,148 @@ export default function PracticeSession() {
               alignItems: "center",
             }}
           >
-            <Typography variant="h5" sx={{ mb: 4, fontWeight: 600, minHeight: "2em", maxWidth: "800px" }}>
+            <Typography
+              variant="h5"
+              sx={{ mb: 4, fontWeight: 600, minHeight: "2em", maxWidth: "800px" }}
+            >
               {question}
             </Typography>
 
-            {/* --- VIDEO CONTAINER --- */}
-            <Box sx={{ 
-                position: 'relative', 
-                width: '100%', 
-                maxWidth: '640px', 
-                aspectRatio: '16/9', 
-                bgcolor: 'black', 
-                borderRadius: '12px', 
-                overflow: 'hidden', 
+            {/* Video Container */}
+            <Box
+              sx={{
+                position: "relative",
+                width: "100%",
+                maxWidth: "640px",
+                aspectRatio: "16/9",
+                bgcolor: "black",
+                borderRadius: "12px",
+                overflow: "hidden",
                 mb: 3,
-                boxShadow: phase === "RECORDING" ? "0 0 0 4px #e63946" : "0 0 20px rgba(0,0,0,0.5)"
-            }}>
-                {cameraError ? (
-                    <Stack height="100%" alignItems="center" justifyContent="center" bgcolor="#333">
-                         <VideocamOffIcon sx={{ fontSize: 60, color: '#666' }} />
-                         <Typography color="#aaa" mt={2}>Camera Unavailable</Typography>
-                    </Stack>
-                ) : (
-                    <video 
-                        ref={videoRef}
-                        autoPlay 
-                        muted 
-                        playsInline
-                        style={{ 
-                            width: '100%', 
-                            height: '100%', 
-                            objectFit: 'cover',
-                            transform: 'scaleX(-1)' // Mirror effect
-                        }} 
-                    />
-                )}
+                boxShadow:
+                  phase === "RECORDING"
+                    ? "0 0 0 4px #e63946"
+                    : "0 0 20px rgba(0,0,0,0.5)",
+              }}
+            >
+              {cameraError ? (
+                <Stack height="100%" alignItems="center" justifyContent="center" bgcolor="#333">
+                  <VideocamOffIcon sx={{ fontSize: 60, color: "#666" }} />
+                  <Typography color="#aaa" mt={2}>
+                    Camera Unavailable
+                  </Typography>
+                </Stack>
+              ) : (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    transform: "scaleX(-1)",
+                  }}
+                />
+              )}
 
-                {/* Recording Overlay */}
-                {phase === "RECORDING" && (
-                    <Box sx={{ 
-                        position: 'absolute', 
-                        top: 16, 
-                        left: 16, 
-                        bgcolor: 'rgba(230, 57, 70, 0.9)', 
-                        color: 'white', 
-                        px: 1.5, 
-                        py: 0.5, 
-                        borderRadius: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1
-                    }}>
-                        <FiberManualRecordIcon sx={{ fontSize: 16, animation: 'pulse 1s infinite' }} />
-                        <Typography variant="subtitle2" fontWeight="bold">REC</Typography>
-                        <Typography variant="subtitle2" sx={{ ml: 1 }}>
-                            {new Date(timer * 1000).toISOString().substr(14, 5)}
-                        </Typography>
-                    </Box>
-                )}
+              {phase === "RECORDING" && (
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: 16,
+                    left: 16,
+                    bgcolor: "rgba(230, 57, 70, 0.9)",
+                    color: "white",
+                    px: 1.5,
+                    py: 0.5,
+                    borderRadius: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  <FiberManualRecordIcon sx={{ fontSize: 16 }} />
+                  <Typography variant="subtitle2" fontWeight="bold">
+                    REC
+                  </Typography>
+                  <Typography variant="subtitle2" sx={{ ml: 1 }}>
+                    {new Date(timer * 1000).toISOString().substr(14, 5)}
+                  </Typography>
+                </Box>
+              )}
             </Box>
 
             {/* Controls */}
             <Stack direction="row" spacing={2} justifyContent="center" mb={2}>
-                 {phase === "RECORDING" ? (
-                    <Button
-                        variant="contained"
-                        color="error"
-                        size="large"
-                        startIcon={<StopCircleIcon />}
-                        onClick={stopRecording}
-                        sx={{ px: 4, py: 1.5, borderRadius: '50px', fontSize: '1.1rem' }}
-                    >
-                        Stop Recording
-                    </Button>
-                 ) : (
-                    <Button
-                        variant="contained"
-                        size="large"
-                        onClick={startRecording}
-                        disabled={disableActions}
-                        startIcon={cameraError ? <MicIcon /> : <FiberManualRecordIcon />}
-                        sx={{ 
-                            bgcolor: "#14b8a6", 
-                            "&:hover": { bgcolor: "#0d9488" },
-                            px: 4, py: 1.5, 
-                            borderRadius: '50px',
-                            fontSize: '1.1rem' 
-                        }}
-                    >
-                        {cameraError ? "Record Audio" : "Start Answer"}
-                    </Button>
-                 )}
+              {phase === "RECORDING" ? (
+                <Button
+                  variant="contained"
+                  color="error"
+                  size="large"
+                  startIcon={<StopCircleIcon />}
+                  onClick={stopRecording}
+                  sx={{
+                    px: 4,
+                    py: 1.5,
+                    borderRadius: "50px",
+                    fontSize: "1.1rem",
+                  }}
+                >
+                  Stop Recording
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={startRecording}
+                  disabled={disableActions}
+                  startIcon={cameraError ? <MicIcon /> : <FiberManualRecordIcon />}
+                  sx={{
+                    bgcolor: "#14b8a6",
+                    "&:hover": { bgcolor: "#0d9488" },
+                    px: 4,
+                    py: 1.5,
+                    borderRadius: "50px",
+                    fontSize: "1.1rem",
+                  }}
+                >
+                  {cameraError ? "Record Audio" : "Start Answer"}
+                </Button>
+              )}
             </Stack>
 
             {/* Next / Finish Actions */}
             <Stack direction="row" spacing={2} mt={2}>
-                {phase === "IDLE" && !isLast && (
+              {phase === "IDLE" && !isLast && (
                 <Button
-                    endIcon={<NavigateNextIcon />}
-                    variant="outlined"
-                    onClick={handleNextQuestion}
-                    disabled={disableActions}
-                    sx={{ color: "#14b8a6", borderColor: "#14b8a6", px: 4 }}
+                  endIcon={<NavigateNextIcon />}
+                  variant="outlined"
+                  onClick={handleNextQuestion}
+                  disabled={disableActions}
+                  sx={{ color: "#14b8a6", borderColor: "#14b8a6", px: 4 }}
                 >
-                    {blob ? "Save & Next" : "Skip Question"}
+                  {blob ? "Save & Next" : "Skip Question"}
                 </Button>
-                )}
+              )}
 
-                {phase === "IDLE" && isLast && (
+              {phase === "IDLE" && isLast && (
                 <Button
-                    startIcon={<DoneAllIcon />}
-                    variant="contained"
-                    color="secondary"
-                    onClick={finish}
-                    disabled={disableActions}
-                    sx={{ px: 4 }}
+                  startIcon={<DoneAllIcon />}
+                  variant="contained"
+                  color="secondary"
+                  onClick={finish}
+                  disabled={disableActions}
+                  sx={{ px: 4 }}
                 >
-                    Finish Session
+                  Finish Session
                 </Button>
-                )}
+              )}
             </Stack>
 
             <Typography sx={{ mt: 3, opacity: 0.6, fontSize: "0.9rem" }}>
-              {phase === "IDLE" && recorded[index] ? "Answer Saved. " : ""}
+              {phase === "IDLE" && recorded[index] ? "Answer Saved." : ""}
             </Typography>
           </Paper>
 
@@ -513,9 +588,18 @@ export default function PracticeSession() {
               {[...Array(MAX).keys()].map((i) => {
                 const isActive = i === index;
                 const isDone = recorded[i];
+                const isFuture = i > index;
+
+                const clickable =
+                  !isFuture &&
+                  phase !== "RECORDING" &&
+                  phase !== "PROCESSING_ANSWER" &&
+                  phase !== "FINALIZING";
+
                 return (
                   <Box
                     key={i}
+                    onClick={() => clickable && handleBubbleClick(i)}
                     sx={{
                       width: 40,
                       height: 40,
@@ -527,7 +611,15 @@ export default function PracticeSession() {
                       border: isActive ? "2px solid #fff" : "2px solid transparent",
                       color: isActive ? "white" : "#e2e8f0",
                       fontWeight: isActive ? 700 : 400,
-                      opacity: isDone || isActive ? 1 : 0.6,
+                      opacity: isDone || isActive ? 1 : isFuture ? 0.4 : 0.7,
+                      cursor: clickable ? "pointer" : "default",
+                      transition: "transform 0.15s ease, box-shadow 0.15s ease",
+                      "&:hover": clickable
+                        ? {
+                            transform: "translateY(-2px)",
+                            boxShadow: "0 8px 20px rgba(15,23,42,0.8)",
+                          }
+                        : undefined,
                     }}
                   >
                     {isDone ? <CheckCircleIcon sx={{ color: "#4ade80" }} /> : i + 1}
