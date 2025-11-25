@@ -667,9 +667,7 @@ const UserProfile: React.FC = () => {
               </Button>
             </CardContent>
           </Card>
-        </Box>
-
-        {/* INTERVIEW CARDS GRID → 3 PER ROW */}                                                                                                                                                                                                                                                                                                                                                                                                          
+        </Box>                                                                                                                                                                                                                                                                                                                                                                                                        
         <Box
           sx={{
             flex: "3 1 600px",
