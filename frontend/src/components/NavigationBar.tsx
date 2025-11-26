@@ -4,7 +4,7 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import { Brain, Home, Mic, LayoutDashboard, User, LogOut } from "lucide-react";
+import {  Home, Mic, LayoutDashboard, User, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export const NavigationBar: React.FC = () => {
