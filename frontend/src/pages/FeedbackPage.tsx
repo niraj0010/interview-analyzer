@@ -454,7 +454,7 @@ const FeedbackPage: React.FC = () => {
     if (source === "practice") {
       navigate("/practice");
     } else {
-      navigate("/dashboard"); // Updated to dashboard
+      navigate("/profile"); // Updated to dashboard
     }
   };
 
