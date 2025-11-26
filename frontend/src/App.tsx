@@ -6,7 +6,10 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
-import { Box, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { Box, CssBaseline, ThemeProvider } from "@mui/material";
+
+// 1. Import your separated theme
+import { theme } from "./theme";
 
 // --- Pages ---
 import Login from "./pages/Login";
@@ -26,47 +29,36 @@ import { FileUpload } from "./components/FileUpload";
 import { NavigationBar } from "./components/NavigationBar";
 import Footer from "./components/Footer";
 
-// Minimal Theme: Just colors and font, no shape overrides
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    background: {
-      default: "#0f172a",
-      paper: "#1e293b",
-    },
-    primary: { main: "#14b8a6" },
-  },
-  typography: {
-    fontFamily: 'Inter, sans-serif',
-  }
-});
-
 const App: React.FC = () => {
   const location = useLocation();
   const hideNavbar = location.pathname === "/login" || location.pathname === "/signup";
 
   return (
-    // 1. OUTER BOX: Forces full height
+    // 2. OUTER BOX: Flex Column, Full Height
     <Box 
       sx={{ 
         display: 'flex', 
         flexDirection: 'column', 
-        minHeight: '100vh', 
+        minHeight: '100dvh', 
+        overflowX: 'hidden', 
         bgcolor: 'background.default',
         color: 'text.primary'
       }}
     >
       {!hideNavbar && <NavigationBar />}
 
-      {/* 2. MAIN CONTENT: Pushes footer down */}
+      {/* 3. MAIN CONTENT: 
+          - flexGrow: 1 ensures it fills all space
+          - Removed 'pt: 8' to fix the ugly gap
+      */}
       <Box 
         component="main" 
         sx={{ 
           flexGrow: 1, 
           display: 'flex',
           flexDirection: 'column',
-          pt: hideNavbar ? 0 : 8, 
           width: '100%',
+          position: 'relative' 
         }}
       >
         <Routes>
@@ -86,7 +78,7 @@ const App: React.FC = () => {
         </Routes>
       </Box>
 
-      {/* 3. FOOTER */}
+      {/* 4. FOOTER */}
       {!hideNavbar && <Footer />}
     </Box>
   );

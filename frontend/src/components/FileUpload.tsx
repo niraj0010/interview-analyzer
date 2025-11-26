@@ -48,7 +48,6 @@ export const FileUpload: React.FC = () => {
       return;
     }
 
-    // Navigate to the processing page with the file in state
     navigate("/processing", { state: { file: selectedFile } });
   };
 
@@ -59,7 +58,10 @@ export const FileUpload: React.FC = () => {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        // KEY FIX: Use flexGrow instead of minHeight
+        flexGrow: 1, 
+        width: '100%',
+        
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",

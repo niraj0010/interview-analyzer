@@ -921,7 +921,7 @@ const UserProfile: React.FC = () => {
               fontWeight: 700,
             }}
           >
-            Statistics
+            Recent Activity
           </Button>
         </ButtonGroup>
 
