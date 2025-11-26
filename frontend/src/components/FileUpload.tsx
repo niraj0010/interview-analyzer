@@ -1,17 +1,45 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Brain } from "lucide-react";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import { Button, Typography, Paper, Box, LinearProgress } from "@mui/material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import { 
+  Button, 
+  Typography, 
+  Paper, 
+  Box, 
+  IconButton, 
+  Stack,
+  Tooltip 
+} from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 
 export const FileUpload: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [uploading, setUploading] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
- 
-  const handleFileUpload = async (file: File) => {
+  
+  // 1. Handle File Selection
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length > 0) {
+      const file = event.target.files[0];
+      setSelectedFile(file);
+    }
+  };
+
+  // 2. Handle Removing the File
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""; // Reset HTML input
+    }
+  };
+
+  // 3. Start Analysis -> Navigate to Processing Page
+  const handleStartAnalysis = () => {
+    if (!selectedFile) return;
+
     const auth = getAuth();
     const user = auth.currentUser;
 
@@ -20,46 +48,7 @@ export const FileUpload: React.FC = () => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("user_id", user.uid);
-
-    try {
-      setUploading(true);
-      setUploadProgress(15);
-
-      const response = await fetch("http://127.0.0.1:8000/analyze", {
-        method: "POST",
-        body: formData,
-      });
-
-      setUploadProgress(70);
-
-      if (!response.ok) throw new Error("Upload failed");
-      const data = await response.json();
-
-      setUploadProgress(100);
-      console.log("✅ Upload success:", data);
-
-      // ✅ Navigate to analysis (FeedbackPage) with Firestore reference
-      navigate("/feedback", {
-        state: { userId: data.userId, interviewId: data.interviewId },
-      });
-    } catch (error) {
-      console.error("❌ Upload error:", error);
-      alert("Upload failed. Please try again.");
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length > 0) {
-      const file = event.target.files[0];
-      setSelectedFile(file);
-      handleFileUpload(file); // auto upload
-    }
+    navigate("/processing", { state: { file: selectedFile } });
   };
 
   const handlePastInterviewsClick = () => {
@@ -69,7 +58,10 @@ export const FileUpload: React.FC = () => {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        // KEY FIX: Use flexGrow instead of minHeight
+        flexGrow: 1, 
+        width: '100%',
+        
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -156,66 +148,83 @@ export const FileUpload: React.FC = () => {
           Upload your video or audio
         </Typography>
         <Typography variant="body2" sx={{ color: "#94a3b8", mb: 3 }}>
-          Click below or drag and drop your file here
+          {selectedFile 
+            ? "File selected! Review below." 
+            : "Click below or drag and drop your file here"}
         </Typography>
 
-        <Button
-          variant="contained"
-          component="label"
-          disabled={uploading}
-          sx={{
-            backgroundColor: "#14b8a6",
-            "&:hover": { backgroundColor: "#0d9488" },
-            borderRadius: "8px",
-            textTransform: "none",
-            px: 3,
-            py: 1.2,
-          }}
-        >
-          {uploading ? "Uploading..." : selectedFile ? "Change File" : "Choose File"}
-          <input
-            hidden
-            type="file"
-            accept="audio/*,video/*"
-            onChange={handleFileChange}
-          />
-        </Button>
-
-        {selectedFile && (
-          <Typography
-            variant="body2"
+        {/* --- FILE SELECTION BUTTON --- */}
+        {!selectedFile && (
+            <Button
+            variant="contained"
+            component="label"
             sx={{
-              color: "#a1a1aa",
-              mt: 3,
-              wordBreak: "break-all",
-              fontSize: "0.9rem",
+                backgroundColor: "#14b8a6",
+                "&:hover": { backgroundColor: "#0d9488" },
+                borderRadius: "8px",
+                textTransform: "none",
+                px: 3,
+                py: 1.2,
             }}
-          >
-            {selectedFile.name}
-          </Typography>
+            >
+            Choose File
+            <input
+                ref={fileInputRef}
+                hidden
+                type="file"
+                accept="audio/*,video/*"
+                onChange={handleFileChange}
+            />
+            </Button>
         )}
 
-        {uploading && (
-          <Box sx={{ width: "100%", mt: 3 }}>
-            <LinearProgress
-              variant="determinate"
-              value={uploadProgress}
-              sx={{
-                height: 10,
-                borderRadius: 2,
-                backgroundColor: "rgba(255,255,255,0.1)",
-                "& .MuiLinearProgress-bar": {
-                  background:
-                    "linear-gradient(90deg, #14b8a6, #10b981, #0d9488)",
-                },
-              }}
-            />
-            <Typography
-              variant="body2"
-              sx={{ mt: 1, color: "#14b8a6" }}
+        {/* --- SELECTED FILE PREVIEW + ACTIONS --- */}
+        {selectedFile && (
+          <Box 
+            sx={{ 
+                mt: 3, 
+                p: 2, 
+                bgcolor: "rgba(15, 23, 42, 0.5)", 
+                borderRadius: 2, 
+                border: "1px solid rgba(148, 163, 184, 0.2)" 
+            }}
+          >
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden' }}>
+                    <UploadFileIcon sx={{ color: "#14b8a6" }} />
+                    <Box sx={{ textAlign: 'left' }}>
+                        <Typography variant="body2" noWrap sx={{ color: "#e2e8f0", fontWeight: 600, maxWidth: "200px" }}>
+                            {selectedFile.name}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: "#94a3b8" }}>
+                            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </Typography>
+                    </Box>
+                </Box>
+
+                {/* REMOVE BUTTON */}
+                <Tooltip title="Remove file">
+                    <IconButton onClick={handleRemoveFile} size="small" sx={{ color: "#ef4444", bgcolor: "rgba(239, 68, 68, 0.1)", "&:hover": { bgcolor: "rgba(239, 68, 68, 0.2)" } }}>
+                        <DeleteIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
+            </Stack>
+
+            {/* UPLOAD BUTTON (Navigates to Processing) */}
+            <Button
+                fullWidth
+                variant="contained"
+                onClick={handleStartAnalysis}
+                sx={{
+                    mt: 2,
+                    backgroundColor: "#14b8a6",
+                    "&:hover": { backgroundColor: "#0d9488" },
+                    textTransform: "none",
+                    fontWeight: 600
+                }}
             >
-              Uploading... {uploadProgress}%
-            </Typography>
+                Start Analysis
+            </Button>
           </Box>
         )}
       </Paper>
@@ -232,7 +241,7 @@ export const FileUpload: React.FC = () => {
         Supported formats: .mp3, .wav, .mp4, .mov, .avi, .webm
       </Typography>
 
-      {/* Button */}
+      {/* Past Interviews Button */}
       <Box sx={{ display: "flex", justifyContent: "center", mt: 5 }}>
         <Button
           variant="outlined"

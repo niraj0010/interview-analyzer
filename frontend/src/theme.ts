@@ -1,49 +1,73 @@
-
+// src/theme.ts
 import { createTheme } from "@mui/material/styles";
 
 export const theme = createTheme({
   palette: {
     mode: "dark",
     background: {
-      default: "#0f172a", // deep navy
-      paper: "rgba(30, 41, 59, 0.8)", // charcoal w/ transparency
+      default: "#0f172a", // Deep Navy
+      paper: "#1e293b",   // Card Background
     },
     primary: {
-      main: "#14b8a6", // teal
+      main: "#14b8a6",    // Teal
     },
     secondary: {
-      main: "#10b981", // green
+      main: "#8b5cf6",    // Violet
     },
-    info: {
-      main: "#8b5cf6", // purple
+    text: {
+      primary: "#e2e8f0",
+      secondary: "#94a3b8",
     },
   },
   typography: {
-    fontFamily: "Inter, sans-serif",
-    h4: { fontWeight: 700, letterSpacing: "-0.02em" }, // bold headings
-    body1: { fontWeight: 300 }, // light body
-    button: { fontWeight: 500, letterSpacing: "0.05em" },
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    button: {
+      textTransform: "none", // No ALL CAPS buttons
+      fontWeight: 600,
+    },
   },
   shape: {
-    borderRadius: 12, // rounded cards
+    borderRadius: 16, // 👈 GLOBAL ROUNDING (The "Sexy" Factor)
   },
   components: {
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 24, // Extra rounded cards
+          backgroundImage: "none", // Clean flat look without gradient overlay
+          boxShadow: "0 10px 40px -10px rgba(0,0,0,0.5)", // Soft modern shadow
+        },
+      },
+    },
     MuiPaper: {
       styleOverrides: {
         root: {
-          backdropFilter: "blur(12px)", // glassmorphism
-          boxShadow: "0 4px 30px rgba(0, 0, 0, 0.3)",
+          backgroundImage: "none",
         },
       },
     },
     MuiButton: {
       styleOverrides: {
         root: {
-          textTransform: "none",
-          boxShadow: "0 0 12px rgba(20, 184, 166, 0.5)", // glowing effect
+          borderRadius: 12, // Rounded buttons
+          padding: "10px 24px",
+        },
+        containedPrimary: {
+          background: "linear-gradient(90deg, #14b8a6, #0d9488)", // Subtle gradient
+          boxShadow: "0 4px 14px 0 rgba(20, 184, 166, 0.39)",
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 12, // Rounded input fields
+          "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+            borderColor: "#14b8a6",
+            borderWidth: 2,
+          },
         },
       },
     },
   },
 });
-

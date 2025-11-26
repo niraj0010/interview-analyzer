@@ -1,28 +1,32 @@
-/* index.css — global base styles for your MUI theme app */
-
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  background-color: #0f172a !important; /* deep navy */
-  color: #e2e8f0;
-}
-
+/* Global Reset & Theme Defaults */
 html, body {
+  height: 100%;
   margin: 0;
   padding: 0;
-  height: 100%;
-  font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
-  background-color: #f9fafb; /* light gray background */
+  background-color: #0f172a; /* Force Dark Navy (No white flashes!) */
+  color: #e2e8f0;
+  font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Root Container - The Flex Column Fix */
 #root {
-  height: 100%;
+  min-height: 100vh; /* Use min-height so it can grow */
   display: flex;
   flex-direction: column;
 }
 
+/* 👇 CRITICAL: This forces the middle content to expand.
+   If your App.tsx has a <main> tag around the Routes, 
+   this ensures the footer stays at the bottom even if the page is empty.
+*/
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Utility Resets */
 a {
   text-decoration: none;
   color: inherit;
@@ -30,7 +34,11 @@ a {
 
 button {
   cursor: pointer;
+  border: none;
+  outline: none;
 }
+
+/* Animations */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
@@ -39,4 +47,3 @@ button {
 .loading-pulse {
   animation: pulse 1.5s infinite;
 }
-

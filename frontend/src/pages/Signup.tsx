@@ -69,7 +69,7 @@ const Signup: React.FC = () => {
         createdAt: new Date(),
       });
 
-      navigate("/landing");
+      navigate("/upload");
     } catch (err: any) {
       setError(err.message);
     }

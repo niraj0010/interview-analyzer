@@ -31,7 +31,6 @@ import {
   PlayCircleOutline,
   Mic as MicIcon,
   CloudUpload as CloudUploadIcon,
-  Bolt as BoltIcon,
   DeleteForever as DeleteForeverIcon,
 } from "@mui/icons-material";
 import { DownloadIcon } from "lucide-react";
@@ -921,7 +920,7 @@ const UserProfile: React.FC = () => {
               fontWeight: 700,
             }}
           >
-            Statistics
+            Recent Activity
           </Button>
         </ButtonGroup>
 

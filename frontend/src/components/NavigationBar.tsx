@@ -4,7 +4,7 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import { Brain, Home, Mic, LayoutDashboard, User, LogOut } from "lucide-react";
+import {  Home, Mic, LayoutDashboard, User, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export const NavigationBar: React.FC = () => {
@@ -21,59 +21,66 @@ export const NavigationBar: React.FC = () => {
         py: 0.8,
       }}
     >
-      <Toolbar
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          width: "100%",
-          maxWidth: "1300px",
-          mx: "auto",
-          px: 2,
-        }}
-      >
-        {/* ---- Left: Logo ---- */}
-        <Box
-          display="flex"
-          alignItems="center"
-          gap={1.2}
-          minWidth="230px"
-          sx={{ cursor: "pointer" }}
-          onClick={() => navigate("/upload")}
-        >
-          <Brain size={26} color="#14b8a6" />
+     <Toolbar
+  sx={{
+    display: "grid",
+    gridTemplateColumns: "1fr auto 1fr",
+    alignItems: "center",
+    width: "100%",
+    px: 2,
+  }}
+>
+        {/* ---- LEFT SECTION (Logo) ---- */}
+        {/* ---- LEFT SECTION (Logo) ---- */}
+<Box
+  display="flex"
+  alignItems="center"
+  gap={1.2}
+  sx={{
+    cursor: "pointer",
+    justifySelf: "start",          // aligns left inside grid cell
+    justifyContent: "flex-start",  // aligns content fully left
+  }}
+  onClick={() => navigate("/upload")}
+>
+  <img 
+    src="/logo.png" 
+    alt="Logo" 
+    style={{ width: 32, height: 32 }} 
+  />
 
-          <Box>
-            <Typography
-              variant="h6"
-              fontWeight={700}
-              sx={{ lineHeight: 1, color: "#fff" }}
-            >
-              Interview <span style={{ color: "#14b8a6" }}>Analyzer</span>
-            </Typography>
+  <Box>
+    <Typography
+      variant="h6"
+      fontWeight={700}
+      sx={{ lineHeight: 1, color: "#fff" }}
+    >
+      Interview <span style={{ color: "#14b8a6" }}>Analyzer</span>
+    </Typography>
 
-            <Typography
-              variant="caption"
-              sx={{
-                color: "#14b8a6",
-                fontWeight: 500,
-                letterSpacing: 1,
-                fontSize: "0.7rem",
-              }}
-            >
-              AI-POWERED INSIGHTS
-            </Typography>
-          </Box>
-        </Box>
+    <Typography
+      variant="caption"
+      sx={{
+        color: "#14b8a6",
+        fontWeight: 500,
+        letterSpacing: 1,
+        fontSize: "0.7rem",
+      }}
+    >
+      AI-POWERED INSIGHTS
+    </Typography>
+  </Box>
+</Box>
 
-        {/* ---- Center: Navigation ---- */}
+
+        {/* ---- CENTER SECTION ---- */}
         <Box
           sx={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             gap: 3,
-            flex: 1,
+            justifySelf: "center", // perfectly centered in grid cell
           }}
         >
           <Button
@@ -120,8 +127,15 @@ export const NavigationBar: React.FC = () => {
           </Button>
         </Box>
 
-        {/* ---- Right: Profile / Logout ---- */}
-        <Box display="flex" alignItems="center" gap={2.2} minWidth="200px">
+        {/* ---- RIGHT SECTION ---- */}
+        <Box
+          display="flex"
+          alignItems="center"
+          gap={2.2}
+          sx={{
+            justifySelf: "end", // fully right aligned
+          }}
+        >
           <Button
             startIcon={<User size={18} />}
             onClick={() => navigate("/profile")}
