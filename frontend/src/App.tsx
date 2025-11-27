@@ -22,7 +22,6 @@ import { UploadProgress } from "./pages/UploadProgress";
 import PracticePage from "./pages/PracticePage"; 
 import PracticeSession from "./pages/PracticeSession";
 import Feedback from "./pages/FeedbackPage";
-import SummaryPage from './pages/SummaryPage';
 
 // --- Components ---
 import { FileUpload } from "./components/FileUpload";
@@ -74,7 +73,7 @@ const App: React.FC = () => {
           <Route path="/practice" element={<PracticePage />} />
           <Route path="/practice-session" element={<PracticeSession />} />
           <Route path="/feedback" element={<Feedback />} />
-          <Route path="/summary" element={<SummaryPage />} />
+          
         </Routes>
       </Box>
 
