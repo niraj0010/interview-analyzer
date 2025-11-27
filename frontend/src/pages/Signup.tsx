@@ -152,7 +152,7 @@ const Signup: React.FC = () => {
               <TextField
                 fullWidth
                 name="jobTitle"
-                label="Job Title"
+                label="Current Job Title"
                 value={form.jobTitle}
                 onChange={handleChange}
               />
@@ -161,7 +161,7 @@ const Signup: React.FC = () => {
               <TextField
                 fullWidth
                 name="company"
-                label="Company"
+                label="Current Company"
                 value={form.company}
                 onChange={handleChange}
               />
@@ -170,7 +170,7 @@ const Signup: React.FC = () => {
               <TextField
                 fullWidth
                 name="location"
-                label="Location"
+                label="Address"
                 value={form.location}
                 onChange={handleChange}
               />
@@ -179,7 +179,7 @@ const Signup: React.FC = () => {
               <TextField
                 fullWidth
                 name="education"
-                label="Education"
+                label="University"
                 value={form.education}
                 onChange={handleChange}
               />

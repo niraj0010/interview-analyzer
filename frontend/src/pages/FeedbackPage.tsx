@@ -267,20 +267,37 @@ const FeedbackPage: React.FC = () => {
         const raw = snap.data() as any;
         
         // --- PRACTICE SESSION MAPPING ---
+        // --- PRACTICE SESSION MAPPING ---
         if (source === "practice") {
           const summary = raw?.summary || {};
           const perQuestionData = raw?.perQuestion || [];
           
           const strengths = summary.keyStrengths ?? summary.strengths ?? [];
-          const improvements = [
+          
+          // 1. Gather all generic improvements into one master list
+          const allImprovements = [
             ...(summary.areasForImprovement ?? []),
             ...(summary.weaknesses ?? []),
             ...(summary.recommendedImprovements ?? []),
           ];
-          const immediate = summary.immediateActionItems ?? improvements;
-          const longTerm = summary.longTermDevelopment ?? improvements;
 
-          // Calculate AI Confidence from individual question emotions
+          // 2. Initialize with explicit data if available
+          let immediate = summary.immediateActionItems || [];
+          let longTerm = summary.longTermDevelopment || [];
+
+          // 3. SMART SPLIT: If explicit buckets are missing, split the generic list
+          if (immediate.length === 0 && longTerm.length === 0 && allImprovements.length > 0) {
+              // Remove duplicates just in case
+              const uniqueImprovements = [...new Set(allImprovements)];
+              const midpoint = Math.ceil(uniqueImprovements.length / 2);
+              
+              // First half goes to Immediate Actions
+              immediate = uniqueImprovements.slice(0, midpoint);
+              // Second half goes to Long Term Development
+              longTerm = uniqueImprovements.slice(midpoint);
+          }
+
+          // 4. Calculate AI Confidence from individual question emotions
           let calculatedAIConfidence = 0;
           if (perQuestionData.length > 0) {
             const answeredQuestions = perQuestionData.filter((q: PracticeQuestionAnswer) => !q.skipped && q.emotion);
@@ -301,12 +318,14 @@ const FeedbackPage: React.FC = () => {
             performanceLevel: summary.performanceLevel,
             aiConfidence: summary.aiConfidence ?? calculatedAIConfidence,
             speechQuality: summary.speechQuality ?? 0,
+            
             keyStrengths: strengths, 
-            areasForImprovement: improvements,
-            immediateActionItems: immediate,
-            longTermDevelopment: longTerm,
+            areasForImprovement: allImprovements, // Keep full list for Summary tab if needed
+            immediateActionItems: immediate,      // <--- Now distinct
+            longTermDevelopment: longTerm,        // <--- Now distinct
+            
             performanceBreakdown: summary.performanceBreakdown || [],
-            // FORCE COMPLETED if summary exists, even if 'complete' flag is missing
+            // FORCE COMPLETED if summary exists
             status: raw?.complete || summary.overallScore ? "completed" : "processing",
             questions: raw?.questions || [],
             perQuestion: perQuestionData,
@@ -314,7 +333,7 @@ const FeedbackPage: React.FC = () => {
             complete: raw?.complete || false,
           };
           setData(merged);
-        } 
+        }
         // --- UPLOAD PIPELINE MAPPING ---
         else {
           const feedback = (raw?.feedback ?? {}) as Partial<InterviewData>;
