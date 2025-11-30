@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Mic, Settings, Target, Zap } from "lucide-react";
 import {
   Box,
@@ -13,7 +13,7 @@ import {
   CircularProgress,
   Stack,
 } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 
 const PracticePage: React.FC = () => {
@@ -24,6 +24,7 @@ const PracticePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const location = useLocation();
   const auth = getAuth();
 
   const roles = [
@@ -39,6 +40,16 @@ const PracticePage: React.FC = () => {
     "Frontend Developer",
     "UX Designer",
     "Other (Specify)",   ];
+
+
+    useEffect(() => {
+    const preRole = location.state?.preselectRole;
+    if (preRole) {
+      // Check if the role is in our standard list, otherwise handle custom logic if needed
+      // For now, simply setting it works if it matches the dropdown values.
+      setRole(preRole);
+    }
+  }, [location.state]);
 
   const handleStart = async () => {
     const selectedRole =

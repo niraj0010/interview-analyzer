@@ -67,6 +67,8 @@ export const theme = createTheme({
   },
 });
 
+
+
 // === UI Components ===
 const GradientButton: React.FC<{
   icon?: React.ReactNode;
@@ -240,6 +242,21 @@ const FeedbackPage: React.FC = () => {
   const [data, setData] = useState<InterviewData | null>(null);
   const [tab, setTab] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+
+
+  const handlePracticeAgain = () => {
+    // If we are in practice mode, we know the role
+    if (source === "practice" && data?.role) {
+      navigate("/practice", { 
+        state: { 
+          preselectRole: data.role, 
+        } 
+      });
+    } else {
+      // Fallback for upload pipeline: just go to the menu
+      navigate("/practice");
+    }
+  };
 
   // 1. Auth Listener: Ensure we have a userId if navigation didn't pass it
   useEffect(() => {
@@ -571,7 +588,12 @@ const FeedbackPage: React.FC = () => {
               </Box>
             </Box>
             <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-              <GradientButton icon={<RefreshIcon />}>Regenerate</GradientButton>
+              <GradientButton 
+      icon={<RefreshIcon />} 
+      onClick={handlePracticeAgain} // <--- Attach it here!
+    >
+      Practice Again
+    </GradientButton>
               <GradientButton icon={<DownloadIcon />} onClick={handleExportPDF}>
                 Export PDF
               </GradientButton>
