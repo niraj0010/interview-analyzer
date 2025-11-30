@@ -15,6 +15,7 @@ import {
   InputAdornment,
   Chip,
   ButtonGroup,
+  CircularProgress,
   Paper,
   Stack,
   Pagination,
@@ -847,7 +848,26 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  if (loading || !user) return null;
+ if (loading || !user) {
+    return (
+      <Shell>
+        <SectionHeader title="Profile Dashboard" subt="Loading your data..." />
+        <Box
+          sx={{
+            height: "50vh",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 2,
+          }}
+        >
+          <CircularProgress sx={{ color: "#14B8A6" }} />
+          <Typography sx={{ color: "#64748B" }}>Fetching your interview history...</Typography>
+        </Box>
+      </Shell>
+    );
+  }
 
   const filteredInterviews = interviews.filter((i) =>
     i.title.toLowerCase().includes(search.toLowerCase())

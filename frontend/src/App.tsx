@@ -20,20 +20,22 @@ import PracticeSession from "./pages/PracticeSession";
 import Feedback from "./pages/FeedbackPage";
 import SummaryPage from './pages/SummaryPage';
 
+// ⭐ Import Footer
+import Footer from "./components/Footer";
 
 const App: React.FC = () => {
   const location = useLocation();
 
-  
   const hideNavbar =
     location.pathname === "/login" || location.pathname === "/signup";
 
   return (
-    <div className="min-h-screen bg-gray-50">
+  <div className="min-h-screen bg-gray-50 flex flex-col w-full">
+
       {/*  Show navbar unless on login/signup */}
       {!hideNavbar && <NavigationBar />}
 
-      <main className="pt-16">
+      <main className="pt-16 flex-1">
         <Routes>
           {/* Redirect root to login */}
           <Route path="/" element={<Navigate to="/login" replace />} />
@@ -52,11 +54,13 @@ const App: React.FC = () => {
           {/* New Practice route */}
           <Route path="/practice" element={<PracticePage />} />
           <Route path="/practice-session" element={<PracticeSession />} />
-           <Route path="/feedback" element={<Feedback />} />
-            <Route path="/summary" element={<SummaryPage />} />
-
+          <Route path="/feedback" element={<Feedback />} />
+          <Route path="/summary" element={<SummaryPage />} />
         </Routes>
       </main>
+
+      {/* ⭐ Add Footer (hidden on login & signup automatically) */}
+      {!hideNavbar && <Footer />}
     </div>
   );
 };

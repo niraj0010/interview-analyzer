@@ -1,19 +1,10 @@
 import React from "react";
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Box,
-  Button,
-} from "@mui/material";
-import {
-  Brain,
-  Home,
-  Mic,
-  LayoutDashboard,
-  User,
-  LogOut,
-} from "lucide-react";
+import AppBar from "@mui/material/AppBar";
+import Toolbar from "@mui/material/Toolbar";
+import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import { Brain, Home, Mic, LayoutDashboard, User, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export const NavigationBar: React.FC = () => {
@@ -35,16 +26,24 @@ export const NavigationBar: React.FC = () => {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          width: "100%",
           maxWidth: "1300px",
           mx: "auto",
-          width: "100%",
           px: 2,
         }}
       >
         {/* ---- Left: Logo ---- */}
-        <Box display="flex" alignItems="center" gap={1.2} minWidth="230px">
+        <Box
+          display="flex"
+          alignItems="center"
+          gap={1.2}
+          minWidth="230px"
+          sx={{ cursor: "pointer" }}
+          onClick={() => navigate("/upload")}
+        >
           <Brain size={26} color="#14b8a6" />
-          <Box sx={{ cursor: "pointer" }} onClick={() => navigate("/upload")}>
+
+          <Box>
             <Typography
               variant="h6"
               fontWeight={700}
@@ -52,6 +51,7 @@ export const NavigationBar: React.FC = () => {
             >
               Interview <span style={{ color: "#14b8a6" }}>Analyzer</span>
             </Typography>
+
             <Typography
               variant="caption"
               sx={{
@@ -87,10 +87,7 @@ export const NavigationBar: React.FC = () => {
               px: 2.8,
               py: 0.9,
               boxShadow: "0 0 10px rgba(20,184,166,0.6)",
-              "&:hover": {
-                background: "#0d9488",
-                boxShadow: "0 0 12px rgba(20,184,166,0.9)",
-              },
+              "&:hover": { background: "#0d9488" },
             }}
           >
             Home
@@ -124,7 +121,7 @@ export const NavigationBar: React.FC = () => {
         </Box>
 
         {/* ---- Right: Profile / Logout ---- */}
-        <Box display="flex" alignItems="center" gap={2.2} minWidth="200px" justifyContent="flex-end">
+        <Box display="flex" alignItems="center" gap={2.2} minWidth="200px">
           <Button
             startIcon={<User size={18} />}
             onClick={() => navigate("/profile")}
@@ -136,6 +133,7 @@ export const NavigationBar: React.FC = () => {
           >
             Profile
           </Button>
+
           <Button
             startIcon={<LogOut size={18} />}
             onClick={() => navigate("/login")}
